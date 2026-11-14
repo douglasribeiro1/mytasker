@@ -11,8 +11,10 @@ import android.os.Bundle;
 import android.text.InputType;
 import android.util.TypedValue;
 import android.widget.Button;
+import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.LinearLayout;
+import android.widget.ScrollView;
 import android.widget.Switch;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -29,6 +31,9 @@ public class MainActivity extends Activity {
     private TextView statusView;
     private EditText offlineField;
     private EditText onlineField;
+    private EditText graceField;
+    private CheckBox mobileBox;
+    private CheckBox wifiBox;
     private Switch cycleSwitch;
     private boolean suppressSwitch;
 
@@ -77,16 +82,30 @@ public class MainActivity extends Activity {
         statusView = text("", 15, false);
         root.addView(statusView);
 
-        root.addView(text("Minutos com dados desligados", 14, false));
+        root.addView(text("O que o ciclo pode desligar (só se estiver ligado; nunca liga o que você desligou)", 14, false));
+        mobileBox = new CheckBox(this);
+        mobileBox.setText("Dados móveis");
+        mobileBox.setChecked(prefs.getBoolean("cycle_mobile", true));
+        root.addView(mobileBox);
+        wifiBox = new CheckBox(this);
+        wifiBox.setText("Wi-Fi");
+        wifiBox.setChecked(prefs.getBoolean("cycle_wifi", false));
+        root.addView(wifiBox);
+
+        root.addView(text("Minutos de segurança após apagar a tela", 14, false));
+        graceField = numberField(prefs.getInt("grace_min", 3));
+        root.addView(graceField);
+
+        root.addView(text("Minutos desligado", 14, false));
         offlineField = numberField(prefs.getInt("offline_min", 15));
         root.addView(offlineField);
 
-        root.addView(text("Minutos com dados ligados", 14, false));
+        root.addView(text("Minutos ligado (para sincronizar)", 14, false));
         onlineField = numberField(prefs.getInt("online_min", 2));
         root.addView(onlineField);
 
         Button save = new Button(this);
-        save.setText("Salvar intervalos");
+        save.setText("Salvar configurações");
         save.setOnClickListener(v -> saveIntervals());
         root.addView(save);
 
@@ -107,21 +126,34 @@ public class MainActivity extends Activity {
         root.addView(text("Deixe o MyTasker com a bateria em \"Sem restrições\" nas configurações do app. "
                 + "O Shizuku precisa ser iniciado de novo após cada reinício do celular.", 13, false));
 
-        setContentView(root);
+        ScrollView scroll = new ScrollView(this);
+        scroll.addView(root);
+        setContentView(scroll);
     }
 
     private void saveIntervals() {
         int offline = parse(offlineField.getText().toString());
         int online = parse(onlineField.getText().toString());
-        if (offline < 1 || online < 1) {
-            toast("Use números inteiros maiores que zero.");
+        int grace = parse(graceField.getText().toString());
+        if (offline < 1 || online < 1 || grace < 1 || offline > 1440 || online > 1440 || grace > 120) {
+            toast("Use números inteiros: segurança de 1 a 120, ciclos de 1 a 1440 minutos.");
             return;
         }
-        prefs.edit().putInt("offline_min", offline).putInt("online_min", online).apply();
+        if (!mobileBox.isChecked() && !wifiBox.isChecked()) {
+            toast("Marque dados móveis, Wi-Fi ou os dois.");
+            return;
+        }
+        prefs.edit()
+                .putInt("offline_min", offline)
+                .putInt("online_min", online)
+                .putInt("grace_min", grace)
+                .putBoolean("cycle_mobile", mobileBox.isChecked())
+                .putBoolean("cycle_wifi", wifiBox.isChecked())
+                .apply();
         if (prefs.getBoolean("active", false)) {
             startCycleService();
         }
-        toast("Intervalos salvos.");
+        toast("Configurações salvas.");
     }
 
     private void onCycleToggled(boolean on) {

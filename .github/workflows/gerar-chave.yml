@@ -1,0 +1,44 @@
+name: Gerar chave de assinatura (rodar uma vez)
+
+# Cria a chave usando a senha do secret KEYSTORE_PASSWORD e entrega o texto para o secret KEYSTORE_B64.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  gerar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Gerar chave
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEYSTORE_B64: ${{ secrets.KEYSTORE_B64 }}
+        run: |
+          if [ -n "$KEYSTORE_B64" ]; then
+            echo "::error::Já existe o secret KEYSTORE_B64. Gerar outra chave impediria atualizar o app instalado. Abortado."
+            exit 1
+          fi
+          if [ ${#KEYSTORE_PASSWORD} -lt 12 ]; then
+            echo "::error::Cadastre o secret KEYSTORE_PASSWORD com pelo menos 12 caracteres."
+            exit 1
+          fi
+          keytool -genkeypair -storetype PKCS12 -keystore release.jks -alias mytasker \
+            -keyalg RSA -keysize 4096 -validity 10000 -dname "CN=MyTasker" \
+            -storepass:env KEYSTORE_PASSWORD -keypass:env KEYSTORE_PASSWORD
+          mkdir saida
+          base64 -w0 release.jks > saida/KEYSTORE_B64.txt
+          cp release.jks saida/release-backup.jks
+
+      # A chave é protegida pela senha, mas apague este artifact depois de copiar.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: chave-mytasker
+          path: saida/
+          retention-days: 1

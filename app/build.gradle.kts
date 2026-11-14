@@ -19,9 +19,10 @@ android {
         applicationId = "com.douglasribeiro.mytasker"
         minSdk = 26
         targetSdk = 36
-        // Aumente a cada versão publicada. O Android só instala por cima se for maior.
-        versionCode = 1
-        versionName = "1.0.0"
+        // No GitHub Actions usa o número da execução, que sempre aumenta: o Android instala por cima sem desinstalar.
+        val run = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 1
+        versionCode = 100 + run
+        versionName = "1.1.$run"
     }
 
     buildFeatures {
