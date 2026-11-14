@@ -14,6 +14,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "MyTasker"
-include(":app")
+rootProject.name = "Pulso"
 include(":ciclo")

@@ -1,55 +1,70 @@
-# MyTasker
+# Pulso
 
-App Android que, com a tela apagada, desliga dados móveis e/ou Wi-Fi em ciclos (por exemplo 15 minutos desligado e 2 minutos ligado para sincronizar), para economizar bateria. Usa o [Shizuku](https://shizuku.rikka.app/), então não precisa de root.
+App Android que avisa as **rotinas da Samsung (Modos e Rotinas)** na hora certa, para economizar bateria desligando os dados móveis (ou o que você quiser) com a tela apagada.
 
-## Requisitos
+Não precisa de root, Shizuku nem computador.
 
-- Android 8.0 ou mais novo.
-- Shizuku instalado e iniciado. No Android 11 ou mais novo, ele inicia pela depuração sem fio, sem computador.
+## Por que assim
 
-## Como usar
+Um app comum não pode desligar os dados móveis no Android. As rotinas da Samsung podem, porque são do sistema.
+O que falta a elas são gatilhos como "15 min sim, 2 min não depois que a tela apaga".
 
-1. Instale o Shizuku e inicie-o.
-2. Instale o APK do MyTasker.
-3. Abra o MyTasker e toque em "Pedir autorização ao Shizuku".
-4. Ajuste os intervalos e toque em "Salvar intervalos".
-5. Ative "Ciclo ativo".
-6. Nas configurações do Android, em Bateria, deixe o MyTasker em "Sem restrições".
+O Pulso mantém uma **notificação fixa** e troca o texto dela:
+- **"Desligar"**: economia. A sua rotina desliga os dados (e o Wi-Fi, se quiser).
+- **"Ativar"**: normal. A sua rotina religa.
 
-## Como funciona
+As rotinas usam a condição **"Notificação recebida"**, com o app Pulso e a palavra.
 
-- Você escolhe no app o que o ciclo pode desligar: dados móveis, Wi-Fi ou os dois.
-- Tela apagada: espera o tempo de segurança (padrão 3 minutos), para não cortar uma conversa ou um carregamento.
-- Depois desliga só o que estiver ligado naquele momento. O que você deixou desligado continua desligado.
-- Espera o tempo "desligado", religa o que desligou pelo tempo "ligado", e repete.
-- Tela acesa: cancela o ciclo e religa na hora o que o ciclo tinha desligado.
-- Os tempos usam alarmes do Android que funcionam mesmo em sono profundo (Doze).
+## Configuração
+
+O tutorial dentro do app (cartão "Como funciona") tem o passo a passo completo. Em resumo:
+
+1. Instale o APK, permita as notificações e deixe a bateria do Pulso **sem restrições**.
+2. Em Modos e Rotinas, crie duas rotinas:
+   - SE notificação do Pulso com **"Desligar"** → Dados móveis **desligado**.
+   - SE notificação do Pulso com **"Ativar"** → Dados móveis **ligado**.
+3. Ligue o Pulso. Em Avançado, use "Enviar desligar" e "Enviar ligar" para testar.
+
+As palavras podem ser trocadas, desde que uma não esteja dentro da outra ("Desligar" contém "ligar").
+
+## O que ele faz
+
+- **Ciclo padrão:** tela apaga → espera (3 min) → economia (15 min) → normal (2 min) → repete.
+- **Horários:** quantos você quiser, com dias, início e fim (pode atravessar a meia-noite). Cada um pode ser:
+  - economia o tempo todo, mesmo com a tela acesa;
+  - ciclo com tempos próprios;
+  - sem ciclo.
+
+  Se dois horários se sobrepõem, vale o de cima.
+- Acender a tela, estar no Wi-Fi ou carregando volta ao normal. As três opções são configuráveis.
+- **Pausar 1 hora:** pelo app, pela notificação ou pelo botão do painel rápido.
+- **Conferência:** 1 min depois de voltar ao normal, confere se os dados voltaram. Se não voltaram, reenvia o sinal e, se ainda falhar, avisa.
+- **Respeita você:** se você mesmo desligou os dados, o Pulso não religa.
+- **Retoma sozinho** depois de reiniciar o celular ou atualizar o app.
+- **Resumo:** tempo em economia hoje e nos últimos 7 dias.
+- **Histórico** de tudo o que fez, em Avançado.
+
+O código fica na pasta `ciclo/`. O pacote continua `com.douglasribeiro.ciclodados` para instalar por cima das versões anteriores.
 
 ## Atualizações sem reinstalar
 
 O Android só instala por cima se a chave de assinatura for a mesma e o `versionCode` for maior. O `versionCode` sobe sozinho a cada build no GitHub Actions. Para a chave, faça uma vez:
 
-1. No GitHub: Settings > Secrets and variables > Actions > New repository secret. Nome `KEYSTORE_PASSWORD`, valor uma senha forte (12 caracteres ou mais). Guarde essa senha também num gerenciador de senhas.
-2. Aba Actions > "Gerar chave de assinatura (rodar uma vez)" > Run workflow.
-3. Ao terminar, baixe o artifact `chave-mytasker`. Abra `KEYSTORE_B64.txt`, copie todo o texto e crie o secret `KEYSTORE_B64` com ele. Guarde `release-backup.jks` fora do GitHub (por exemplo no Google Drive), como backup.
-4. Apague o artifact da execução (ícone de lixeira).
-5. Rode Actions > Build APK. Desinstale o app antigo uma última vez e instale este APK. Daqui para frente, é só instalar por cima.
+1. No GitHub, vá em Settings > Secrets and variables > Actions > New repository secret.
+   Crie `KEYSTORE_PASSWORD` com uma senha forte, de 12 caracteres ou mais.
+   Guarde essa senha também num gerenciador de senhas.
+2. Na aba Actions, rode "Gerar chave de assinatura (rodar uma vez)".
+3. Baixe o artifact `chave-mytasker`, copie o texto de `KEYSTORE_B64.txt` e crie o secret `KEYSTORE_B64` com ele.
+   Guarde `release-backup.jks` fora do GitHub.
+4. Apague o artifact da execução.
 
-Se perder a chave e a senha, as próximas versões terão que ser instaladas do zero.
+## Build automático
 
-## Build automático no GitHub Actions
+O workflow `.github/workflows/build.yml` compila a cada push na `main` e também pode ser disparado manualmente. O APK sai no artifact `pulso-release`.
 
-O workflow `.github/workflows/build.yml` compila o APK a cada push na `main` e também pode ser disparado manualmente. O APK aparece como artifact `mytasker-release`. Sem os secrets, o APK sai sem assinatura.
+## Segurança e privacidade
 
-## Segurança
-
-- O MyTasker não pede acesso à internet. Pede só permissões de estado de rede/Wi-Fi, alarmes, notificação e manter o processador acordado alguns segundos.
-- O serviço que roda com privilégio de shell só executa comandos fixos (`svc data`, `cmd wifi`/`svc wifi`, `settings get global mobile_data`). Ele não recebe comandos de fora.
-- O Shizuku dá ao app autorizado privilégios de shell (ADB). Autorize só o MyTasker.
-- Depois de iniciar o Shizuku, desligue a depuração sem fio se não precisar dela. O Shizuku continua rodando.
-
-## Limitações conhecidas
-
-- Se o aparelho não aceitar os comandos, a notificação mostra "Falha ao desligar" ou "Falha ao ligar".
-- Sem root, o Shizuku precisa ser iniciado de novo depois de cada reinício do celular.
-- Desligar o Wi-Fi faz o celular reconectar à rede a cada ciclo, o que leva alguns segundos.
+- Não pede acesso à internet.
+- Só lê o estado da rede e dos dados móveis.
+- Usa alarmes, notificação e mantém o processador acordado por alguns segundos em cada troca.
+- Não lê suas notificações nem a tela.

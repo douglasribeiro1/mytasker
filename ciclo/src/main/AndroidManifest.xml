@@ -9,10 +9,17 @@
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" android:maxSdkVersion="32" />
     <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <!-- Voltar sozinho depois de reiniciar o celular. -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <!-- Para o botão "Abrir Modos e Rotinas" do tutorial. -->
+    <queries>
+        <package android:name="com.samsung.android.app.routines" />
+    </queries>
 
     <application
         android:allowBackup="false"
-        android:label="Ciclo Dados"
+        android:label="Pulso"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
@@ -25,7 +32,16 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <!-- Toque longo no botão do painel rápido abre o app. -->
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE_PREFERENCES" />
+            </intent-filter>
         </activity>
+
+        <activity
+            android:name=".TutorialActivity"
+            android:exported="false"
+            android:label="Como funciona" />
 
         <service
             android:name=".CicloService"
@@ -33,8 +49,28 @@
             android:foregroundServiceType="specialUse">
             <property
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-                android:value="Notificacao persistente que sinaliza a rotina do sistema para desligar e ligar os dados moveis em ciclos" />
+                android:value="Notificacao persistente que sinaliza rotinas do sistema para economizar dados moveis em ciclos e horarios" />
         </service>
+
+        <service
+            android:name=".PainelTile"
+            android:exported="true"
+            android:icon="@drawable/ic_stat"
+            android:label="Pulso"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
+
+        <receiver
+            android:name=".BootReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
     </application>
 
 </manifest>
