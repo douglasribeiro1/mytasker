@@ -4,22 +4,18 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" android:maxSdkVersion="32" />
     <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
-    <!-- "Aparecer sobre outros apps": é o que deixa o app se abrir sozinho com a tela apagada. -->
-    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
 
     <application
         android:allowBackup="false"
         android:label="Ciclo Dados"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round"
-        android:supportsRtl="true"
-        android:appCategory="audio">
+        android:supportsRtl="true">
 
         <activity
             android:name=".MainActivity"
@@ -30,53 +26,13 @@
             </intent-filter>
         </activity>
 
-        <!-- A "janela" que fica aberta para a rotina da Samsung desligar os dados. -->
-        <activity
-            android:name=".JanelaActivity"
-            android:exported="false"
-            android:excludeFromRecents="true"
-            android:launchMode="singleTask"
-            android:taskAffinity="com.douglasribeiro.ciclodados.janela"
-            android:showWhenLocked="true"
-            android:turnScreenOn="true" />
-
-        <!-- Só para o app aparecer como "app de mídia" na rotina da Samsung. -->
-        <service
-            android:name=".MidiaService"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="android.media.browse.MediaBrowserService" />
-            </intent-filter>
-        </service>
-        <receiver
-            android:name=".BotaoMidiaReceiver"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="android.intent.action.MEDIA_BUTTON" />
-            </intent-filter>
-        </receiver>
-
-        <!-- Opcional: apaga a tela logo após o gatilho, como o botão lateral. Não lê a tela. -->
-        <service
-            android:name=".TelaService"
-            android:exported="false"
-            android:label="Ciclo Dados: apagar tela"
-            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
-            <intent-filter>
-                <action android:name="android.accessibilityservice.AccessibilityService" />
-            </intent-filter>
-            <meta-data
-                android:name="android.accessibilityservice"
-                android:resource="@xml/tela_service" />
-        </service>
-
         <service
             android:name=".CicloService"
             android:exported="false"
-            android:foregroundServiceType="specialUse|mediaPlayback">
+            android:foregroundServiceType="specialUse">
             <property
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-                android:value="Abre o app em ciclos com a tela apagada para uma rotina do sistema desligar os dados moveis" />
+                android:value="Notificacao persistente que sinaliza a rotina do sistema para desligar e ligar os dados moveis em ciclos" />
         </service>
     </application>
 

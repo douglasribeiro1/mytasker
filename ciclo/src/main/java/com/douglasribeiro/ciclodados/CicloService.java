@@ -12,86 +12,76 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.content.pm.ServiceInfo;
-import android.media.AudioAttributes;
-import android.media.AudioFormat;
-import android.media.AudioTrack;
-import android.media.session.MediaSession;
-import android.media.session.PlaybackState;
 import android.net.ConnectivityManager;
 import android.net.Network;
 import android.net.NetworkCapabilities;
 import android.os.Build;
+import android.os.Handler;
 import android.os.IBinder;
+import android.os.Looper;
 import android.os.PowerManager;
 import android.os.SystemClock;
 import android.provider.Settings;
 import android.telephony.TelephonyManager;
 
 /**
- * Teste: com a tela apagada, abre o app de tempos em tempos para que uma rotina da Samsung
- * ("se Ciclo Dados estiver aberto → desligar dados móveis") desligue os dados.
+ * Sinaliza a rotina da Samsung por uma notificação persistente que muda de texto:
+ * "Desligar" no tempo sem internet, "Ativar" no tempo com internet (as palavras são configuráveis).
+ * Rotinas: "Notificação recebida" com a palavra de desligar → dados desligados;
+ *          com a palavra de ligar → dados ligados.
  *
- * Tela apaga → espera → abre a janela (dados devem desligar) → fecha a janela (a rotina termina
- * e os dados voltam) → espera → abre de novo... Acender a tela fecha a janela e para tudo.
- * Um minuto depois de abrir e de fechar, anota no histórico o estado real dos dados.
+ * Tela apaga → espera → Desligar → (tempo sem internet) → Ativar → (tempo com internet) → Desligar...
+ * Se a opção estiver marcada, acender a tela interrompe o ciclo e manda "Ativar" na hora.
+ * Só manda "Ativar" depois de ter mandado "Desligar": se você mesmo desligou os dados, não religa.
  */
 public class CicloService extends Service {
 
     static final String ACTION_STOP = "com.douglasribeiro.ciclodados.STOP";
+    static final String ACTION_TESTE_OFF = "com.douglasribeiro.ciclodados.TESTE_OFF";
+    static final String ACTION_TESTE_ON = "com.douglasribeiro.ciclodados.TESTE_ON";
     private static final String ACTION_TICK = "com.douglasribeiro.ciclodados.TICK";
-    private static final String CHANNEL = "ciclo";
+    private static final String CHANNEL = "sinal";
     private static final int NOTIF_ID = 1;
 
-    private static final int IDLE = 0, ESPERA = 1, ABERTO_CONF = 2, ABERTO = 3, FECHADO_CONF = 4, FECHADO = 5;
+    private static final int IDLE = 0, ESPERA = 1, OFF_CONF = 2, OFF = 3, ON_CONF = 4, ON = 5;
 
     private SharedPreferences prefs;
     private boolean receiverOn;
-    /** true enquanto a tela está acesa porque o próprio app acendeu (não é você usando o celular). */
-    static volatile boolean gatilhoAtivo;
-
-    private AudioTrack audio;
-    private MediaSession sessao;
-
-    /** "midia" (áudio silencioso) ou "tela" (acende a tela e deixa o app aberto). */
-    private boolean modoMidia() {
-        return !"tela".equals(prefs.getString("modo", "midia"));
-    }
+    private boolean emPrimeiroPlano;
 
     private final BroadcastReceiver telaReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
-            String a = intent.getAction();
-            if (Intent.ACTION_USER_PRESENT.equals(a)) {
-                // Desbloqueio é sempre você, nunca o gatilho.
-                gatilhoAtivo = false;
-                telaAcendeu();
-            } else if (Intent.ACTION_SCREEN_OFF.equals(a)) {
-                if (gatilhoAtivo) {
-                    gatilhoAtivo = false;
-                    Registro.add(CicloService.this, "Tela apagou de novo (fim do gatilho). App continua aberto.");
-                } else {
-                    telaApagou();
-                }
-            } else if (Intent.ACTION_SCREEN_ON.equals(a)) {
-                if (gatilhoAtivo) Registro.add(CicloService.this, "Tela acesa pelo gatilho.");
-                else telaAcendeu();
-            }
+            if (Intent.ACTION_SCREEN_OFF.equals(intent.getAction())) telaApagou();
+            else if (Intent.ACTION_SCREEN_ON.equals(intent.getAction())) telaAcendeu();
         }
     };
+
+    static String palavraOff(SharedPreferences p) { return p.getString("palavra_off", "Desligar"); }
+    static String palavraOn(SharedPreferences p) { return p.getString("palavra_on", "Ativar"); }
 
     @Override
     public void onCreate() {
         super.onCreate();
         prefs = Registro.prefs(this);
-        NotificationChannel ch = new NotificationChannel(CHANNEL, "Ciclo Dados", NotificationManager.IMPORTANCE_LOW);
+        // Canal visível, mas sem som nem vibração.
+        NotificationChannel ch = new NotificationChannel(CHANNEL, "Sinal para a rotina", NotificationManager.IMPORTANCE_DEFAULT);
+        ch.setSound(null, null);
+        ch.enableVibration(false);
+        ch.setShowBadge(false);
         getSystemService(NotificationManager.class).createNotificationChannel(ch);
     }
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         String action = intent != null ? intent.getAction() : null;
-        // Sempre entra em primeiro plano antes de qualquer coisa: o alarme inicia o serviço como foreground.
-        primeiroPlano("Aguardando a tela apagar");
+        // Sempre em primeiro plano antes de tudo: o alarme inicia o serviço como foreground.
+        // Reaproveita o último texto mostrado, para não trocar o sinal à toa.
+        if (!emPrimeiroPlano) {
+            primeiroPlano(sinal(prefs.getString("notif_titulo", "Ciclo Dados"),
+                    prefs.getString("notif_texto", "Aguardando a tela apagar")));
+            emPrimeiroPlano = true;
+        }
         if (ACTION_STOP.equals(action) || !prefs.getBoolean("enabled", false)) {
             parar(ACTION_STOP.equals(action));
             return START_NOT_STICKY;
@@ -100,34 +90,45 @@ public class CicloService extends Service {
             IntentFilter f = new IntentFilter();
             f.addAction(Intent.ACTION_SCREEN_OFF);
             f.addAction(Intent.ACTION_SCREEN_ON);
-            f.addAction(Intent.ACTION_USER_PRESENT);
             registerReceiver(telaReceiver, f);
             receiverOn = true;
         }
         if (ACTION_TICK.equals(action)) tick();
+        else if (ACTION_TESTE_OFF.equals(action)) {
+            Registro.add(this, "Teste: notificação \"" + palavraOff(prefs) + "\".");
+            sinalDesligar(0);
+        } else if (ACTION_TESTE_ON.equals(action)) {
+            Registro.add(this, "Teste: notificação \"" + palavraOn(prefs) + "\".");
+            sinalLigar(0);
+        }
         return START_STICKY;
     }
 
+    private boolean telaInterrompe() {
+        return prefs.getBoolean("tela_interrompe", true);
+    }
+
     private void telaApagou() {
-        int espera = prefs.getInt("wait_min", 1);
-        Registro.add(this, "Tela apagou. Abre o app em " + espera + " min.");
+        if (prefs.getInt("step", IDLE) != IDLE) return; // ciclo já rodando (tela não interrompe)
+        int espera = prefs.getInt("wait_min", 3);
+        Registro.add(this, "Tela apagou. \"" + palavraOff(prefs) + "\" em " + espera + " min.");
         setStep(ESPERA);
         agendar(espera);
-        notificar("Tela apagada: aguardando " + espera + " min");
+        notificar(neutro("Tela apagada: começa em " + espera + " min"));
     }
 
     private void telaAcendeu() {
-        gatilhoAtivo = false;
+        if (!telaInterrompe()) return;
         int step = prefs.getInt("step", IDLE);
         cancelar();
-        if (step == ABERTO_CONF || step == ABERTO) {
-            encerrarGatilho();
-            Registro.add(this, "Tela acendeu: gatilho encerrado, a rotina deve religar os dados.");
-        } else if (step != IDLE) {
-            Registro.add(this, "Tela acendeu: ciclo parado.");
-        }
         setStep(IDLE);
-        notificar("Aguardando a tela apagar");
+        if (step == OFF_CONF || step == OFF) {
+            Registro.add(this, "Tela acendeu: \"" + palavraOn(prefs) + "\" para religar os dados.");
+            sinalLigar(0);
+        } else {
+            if (step != IDLE) Registro.add(this, "Tela acendeu: ciclo parado.");
+            notificar(neutro("Aguardando a tela apagar"));
+        }
     }
 
     private void tick() {
@@ -135,38 +136,42 @@ public class CicloService extends Service {
         PowerManager.WakeLock wl = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "ciclodados:tick");
         wl.acquire(30_000);
         try {
-            if (pm.isInteractive() && !gatilhoAtivo) {
+            if (pm.isInteractive() && telaInterrompe()) {
                 telaAcendeu();
                 return;
             }
-            int step = prefs.getInt("step", IDLE);
-            int aberto = prefs.getInt("open_min", 5);
-            int fechado = prefs.getInt("closed_min", 2);
-            switch (step) {
+            int off = prefs.getInt("off_min", 15);
+            int on = prefs.getInt("on_min", 2);
+            switch (prefs.getInt("step", IDLE)) {
                 case ESPERA:
-                case FECHADO:
-                    if (modoMidia()) tocarSilencio(); else abrirJanela();
-                    setStep(ABERTO_CONF);
+                case ON:
+                    if (!dadosLigados()) {
+                        // Você (ou outra coisa) desligou os dados: respeita e só tenta no próximo ciclo.
+                        Registro.add(this, "Dados já estavam desligados: nada a fazer agora.");
+                        setStep(ON);
+                        agendar(off + on);
+                        break;
+                    }
+                    Registro.add(this, "Enviando \"" + palavraOff(prefs) + "\".");
+                    sinalDesligar(off);
+                    setStep(OFF_CONF);
                     agendar(1);
-                    notificar(modoMidia() ? "Tocando silêncio: dados devem estar desligados"
-                            : "App aberto: dados devem estar desligados");
                     break;
-                case ABERTO_CONF:
-                    Registro.add(this, "1 min após abrir → " + estado() + "   (esperado: DESLIGADOS)");
-                    setStep(ABERTO);
-                    agendar(aberto - 1);
+                case OFF_CONF:
+                    Registro.add(this, "1 min após \"" + palavraOff(prefs) + "\" → " + estado() + "   (esperado: DESLIGADOS)");
+                    setStep(OFF);
+                    agendar(off - 1);
                     break;
-                case ABERTO:
-                    encerrarGatilho();
-                    Registro.add(this, modoMidia() ? "Parando o áudio silencioso." : "Fechando o app.");
-                    setStep(FECHADO_CONF);
+                case OFF:
+                    Registro.add(this, "Enviando \"" + palavraOn(prefs) + "\".");
+                    sinalLigar(on);
+                    setStep(ON_CONF);
                     agendar(1);
-                    notificar("App fechado: dados devem voltar");
                     break;
-                case FECHADO_CONF:
-                    Registro.add(this, "1 min após fechar → " + estado() + "   (esperado: LIGADOS)");
-                    setStep(FECHADO);
-                    agendar(fechado - 1);
+                case ON_CONF:
+                    Registro.add(this, "1 min após \"" + palavraOn(prefs) + "\" → " + estado() + "   (esperado: LIGADOS)");
+                    setStep(ON);
+                    agendar(on - 1);
                     break;
                 default:
                     break;
@@ -176,32 +181,61 @@ public class CicloService extends Service {
         }
     }
 
-    private void abrirJanela() {
-        if (Build.VERSION.SDK_INT >= 23 && !Settings.canDrawOverlays(this)) {
-            Registro.add(this, "ERRO: falta a permissão \"Aparecer sobre outros apps\". O Android pode bloquear a abertura.");
-        }
-        gatilhoAtivo = true;
-        try {
-            Intent i = new Intent(this, JanelaActivity.class);
-            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_NO_ANIMATION);
-            startActivity(i);
-            Registro.add(this, "Abrindo o app (pedido enviado ao Android).");
-        } catch (RuntimeException e) {
-            gatilhoAtivo = false;
-            Registro.add(this, "ERRO ao abrir o app: " + e.getClass().getSimpleName());
+    // ---- Notificação (o sinal para a rotina) ----
+
+    private Notification sinal(String titulo, String texto) {
+        prefs.edit().putString("notif_titulo", titulo).putString("notif_texto", texto).apply();
+        PendingIntent abrir = PendingIntent.getActivity(this, 0,
+                new Intent(this, MainActivity.class), PendingIntent.FLAG_IMMUTABLE);
+        return new Notification.Builder(this, CHANNEL)
+                .setSmallIcon(android.R.drawable.ic_popup_sync)
+                .setContentTitle(titulo)
+                .setContentText(texto)
+                .setContentIntent(abrir)
+                .setOngoing(true)
+                .setShowWhen(true)
+                .setWhen(System.currentTimeMillis())
+                .build();
+    }
+
+    /** Textos neutros nunca contêm as palavras de sinal, para não disparar rotina por engano. */
+    private Notification neutro(String texto) {
+        return sinal("Ciclo Dados", texto);
+    }
+
+    private void sinalDesligar(int minutos) {
+        String t = minutos > 0 ? "Sem internet por " + minutos + " min" : "Sinal de teste";
+        notificar(sinal(palavraOff(prefs), t));
+    }
+
+    private void sinalLigar(int minutos) {
+        String t = minutos > 0 ? "Com internet por " + minutos + " min" : "Dados de volta";
+        notificar(sinal(palavraOn(prefs), t));
+    }
+
+    private void primeiroPlano(Notification n) {
+        if (Build.VERSION.SDK_INT >= 34) {
+            startForeground(NOTIF_ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE);
+        } else {
+            startForeground(NOTIF_ID, n);
         }
     }
 
-    /** Estado real: a chave de dados móveis e a rede que está em uso. */
-    private String estado() {
-        String dados;
+    private void notificar(Notification n) {
+        getSystemService(NotificationManager.class).notify(NOTIF_ID, n);
+    }
+
+    // ---- Estado real dos dados (para o histórico) ----
+
+    private boolean dadosLigados() {
         try {
-            TelephonyManager tm = getSystemService(TelephonyManager.class);
-            dados = tm.isDataEnabled() ? "LIGADOS" : "DESLIGADOS";
+            return getSystemService(TelephonyManager.class).isDataEnabled();
         } catch (RuntimeException e) {
-            int v = Settings.Global.getInt(getContentResolver(), "mobile_data", -1);
-            dados = v == 1 ? "LIGADOS" : v == 0 ? "DESLIGADOS" : "desconhecido";
+            return Settings.Global.getInt(getContentResolver(), "mobile_data", 1) == 1;
         }
+    }
+
+    private String estado() {
         String rede = "nenhuma";
         ConnectivityManager cm = getSystemService(ConnectivityManager.class);
         Network n = cm.getActiveNetwork();
@@ -211,85 +245,40 @@ public class CicloService extends Service {
             else if (nc.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)) rede = "dados móveis";
             else rede = "outra";
         }
-        String g = modoMidia() ? "áudio: " + (audio != null && audio.getPlayState() == AudioTrack.PLAYSTATE_PLAYING ? "tocando" : "parado")
-                : "janela: " + JanelaActivity.estado;
-        return "dados móveis: " + dados + " | rede em uso: " + rede + " | " + g;
+        return "dados móveis: " + (dadosLigados() ? "LIGADOS" : "DESLIGADOS") + " | rede em uso: " + rede;
     }
+
+    // ---- Ciclo de vida ----
 
     private void parar(boolean anotar) {
         cancelar();
-        encerrarGatilho();
+        int step = prefs.getInt("step", IDLE);
         setStep(IDLE);
         if (receiverOn) {
             unregisterReceiver(telaReceiver);
             receiverOn = false;
         }
         if (anotar) Registro.add(this, "Ciclo desligado.");
+        if (step == OFF_CONF || step == OFF) {
+            // Estava sem internet: manda o sinal de ligar e espera um pouco antes de tirar a notificação.
+            Registro.add(this, "Enviando \"" + palavraOn(prefs) + "\" antes de parar.");
+            sinalLigar(0);
+            new Handler(Looper.getMainLooper()).postDelayed(this::sair, 5000);
+        } else {
+            sair();
+        }
+    }
+
+    private void sair() {
+        if (prefs.getBoolean("enabled", false)) return; // religado nesse meio tempo
+        prefs.edit().remove("notif_titulo").remove("notif_texto").apply();
+        emPrimeiroPlano = false;
         stopForeground(STOP_FOREGROUND_REMOVE);
         stopSelf();
     }
 
-    /** Fecha a janela e para o áudio, o que estiver ativo. */
-    private void encerrarGatilho() {
-        JanelaActivity.fechar();
-        pararSilencio();
-    }
-
-    /**
-     * Toca silêncio (zeros) em loop como mídia, com uma sessão de mídia "tocando", para a condição
-     * "A mídia está sendo reproduzida" da Samsung. Não pede foco de áudio: não interrompe sua música.
-     */
-    private void tocarSilencio() {
-        pararSilencio();
-        try {
-            int rate = 8000;
-            byte[] zeros = new byte[rate * 2]; // 1 s, mono, 16 bits
-            audio = new AudioTrack.Builder()
-                    .setAudioAttributes(new AudioAttributes.Builder()
-                            .setUsage(AudioAttributes.USAGE_MEDIA)
-                            .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
-                            .build())
-                    .setAudioFormat(new AudioFormat.Builder()
-                            .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
-                            .setSampleRate(rate)
-                            .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
-                            .build())
-                    .setTransferMode(AudioTrack.MODE_STATIC)
-                    .setBufferSizeInBytes(zeros.length)
-                    .build();
-            audio.write(zeros, 0, zeros.length);
-            audio.setLoopPoints(0, rate, -1);
-            audio.play();
-
-            sessao = new MediaSession(this, "ciclodados");
-            sessao.setPlaybackState(new PlaybackState.Builder()
-                    .setState(PlaybackState.STATE_PLAYING, 0, 1f)
-                    .setActions(PlaybackState.ACTION_STOP)
-                    .build());
-            sessao.setActive(true);
-            Registro.add(this, "Tocando áudio silencioso.");
-        } catch (RuntimeException e) {
-            Registro.add(this, "ERRO ao tocar o áudio: " + e.getClass().getSimpleName());
-            pararSilencio();
-        }
-    }
-
-    private void pararSilencio() {
-        if (audio != null) {
-            try { audio.stop(); } catch (RuntimeException ignored) {}
-            audio.release();
-            audio = null;
-        }
-        if (sessao != null) {
-            sessao.setActive(false);
-            sessao.release();
-            sessao = null;
-        }
-    }
-
     @Override
     public void onDestroy() {
-        pararSilencio();
         if (receiverOn) {
             unregisterReceiver(telaReceiver);
             receiverOn = false;
@@ -319,32 +308,6 @@ public class CicloService extends Service {
 
     private void cancelar() {
         getSystemService(AlarmManager.class).cancel(tickIntent());
-    }
-
-    private Notification notificacao(String texto) {
-        PendingIntent abrir = PendingIntent.getActivity(this, 0,
-                new Intent(this, MainActivity.class), PendingIntent.FLAG_IMMUTABLE);
-        return new Notification.Builder(this, CHANNEL)
-                .setSmallIcon(android.R.drawable.ic_popup_sync)
-                .setContentTitle("Ciclo Dados (teste)")
-                .setContentText(texto)
-                .setContentIntent(abrir)
-                .setOngoing(true)
-                .build();
-    }
-
-    private void primeiroPlano(String texto) {
-        Notification n = notificacao(texto);
-        if (Build.VERSION.SDK_INT >= 34) {
-            startForeground(NOTIF_ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
-                    | ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK);
-        } else {
-            startForeground(NOTIF_ID, n);
-        }
-    }
-
-    private void notificar(String texto) {
-        getSystemService(NotificationManager.class).notify(NOTIF_ID, notificacao(texto));
     }
 
     @Override

@@ -14,14 +14,15 @@ import android.provider.Settings;
 import android.text.InputType;
 import android.util.TypedValue;
 import android.widget.Button;
+import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.LinearLayout;
-import android.widget.RadioButton;
-import android.widget.RadioGroup;
 import android.widget.ScrollView;
 import android.widget.Switch;
 import android.widget.TextView;
 import android.widget.Toast;
+
+import java.util.Locale;
 
 public class MainActivity extends Activity {
 
@@ -30,7 +31,8 @@ public class MainActivity extends Activity {
     private SharedPreferences prefs;
     private TextView permView;
     private TextView logView;
-    private EditText waitField, openField, closedField, telaField;
+    private EditText waitField, offField, onField, palavraOffField, palavraOnField;
+    private CheckBox telaBox;
     private Switch cicloSwitch;
     private boolean suprimir;
 
@@ -57,63 +59,39 @@ public class MainActivity extends Activity {
         root.setOrientation(LinearLayout.VERTICAL);
         root.setPadding(pad, pad, pad, pad);
 
-        TextView titulo = texto("Ciclo Dados — versão de teste", 20);
+        TextView titulo = texto("Ciclo Dados", 20);
         titulo.setTypeface(Typeface.DEFAULT_BOLD);
         root.addView(titulo);
 
         root.addView(texto(
-                "Com a tela apagada, o app aciona a rotina da Samsung pelo tempo sem internet. Dois gatilhos:\n"
-                + "• Mídia: toca um áudio silencioso. Rotina: SE \"A mídia está sendo reproduzida\" "
-                + "ENTÃO \"Dados móveis: desligado\".\n"
-                + "• Tela acesa: acende a tela alguns segundos e deixa o app aberto. Rotina: SE \"App aberto: "
-                + "Ciclo Dados\" ENTÃO \"Dados móveis: desligado\".\n\n"
-                + "1) Dê as permissões abaixo (Acessibilidade só serve para o gatilho de tela).\n"
-                + "2) Crie a rotina do gatilho escolhido em Modos e Rotinas.\n"
-                + "3) Ligue o ciclo, apague a tela e deixe o celular parado uns 15–20 min.\n"
-                + "4) Volte aqui e leia o histórico.\n\n"
-                + "Obs.: enquanto esta tela está aberta, a rotina também desliga os dados. "
-                + "Isso é normal e serve para conferir que a rotina está certa: abra o app com a tela acesa "
-                + "e veja se o ícone de dados some.", 14));
+                "O app mantém uma notificação fixa que muda de texto para avisar a rotina da Samsung:\n"
+                + "• palavra de desligar → tempo sem internet\n"
+                + "• palavra de ligar → tempo com internet\n\n"
+                + "Em Modos e Rotinas, crie duas rotinas com \"Notificação recebida\" (app Ciclo Dados):\n"
+                + "1) com a palavra de desligar → Dados móveis: desligado\n"
+                + "2) com a palavra de ligar → Dados móveis: ligado\n\n"
+                + "Uma palavra não pode estar dentro da outra (\"Desligar\" contém \"ligar\").", 14));
 
         permView = texto("", 14);
         permView.setPadding(0, dp(12), 0, dp(4));
         root.addView(permView);
-
-        root.addView(botao("Permitir \"Aparecer sobre outros apps\"", () ->
-                abrir(new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:" + getPackageName())))));
         root.addView(botao("Bateria: deixar sem restrições", this::pedirBateria));
-        root.addView(botao("Acessibilidade: permitir apagar a tela (opcional)", () ->
-                abrir(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))));
-        root.addView(texto("Se a Acessibilidade aparecer bloqueada: Configurações → Aplicativos → Ciclo Dados → "
-                + "⋮ (canto de cima) → \"Permitir configurações restritas\" e tente de novo.", 12));
 
-        root.addView(texto("\nGatilho:", 16));
-        RadioGroup modo = new RadioGroup(this);
-        RadioButton midia = new RadioButton(this);
-        midia.setText("Mídia (áudio silencioso, tela não acende)");
-        midia.setId(1);
-        RadioButton tela = new RadioButton(this);
-        tela.setText("Tela acesa por alguns segundos (app aberto)");
-        tela.setId(2);
-        modo.addView(midia);
-        modo.addView(tela);
-        modo.check("tela".equals(prefs.getString("modo", "midia")) ? 2 : 1);
-        modo.setOnCheckedChangeListener((g, id) -> {
-            if (prefs.getBoolean("enabled", false)) {
-                toast("Desligue o ciclo antes de trocar o gatilho.");
-                g.check("tela".equals(prefs.getString("modo", "midia")) ? 2 : 1);
-                return;
-            }
-            prefs.edit().putString("modo", id == 2 ? "tela" : "midia").apply();
-        });
-        root.addView(modo);
+        root.addView(texto("\nPalavras da notificação:", 16));
+        palavraOffField = campoTexto(root, "Palavra para DESLIGAR os dados", CicloService.palavraOff(prefs));
+        palavraOnField = campoTexto(root, "Palavra para LIGAR os dados", CicloService.palavraOn(prefs));
 
         root.addView(texto("\nTempos (minutos):", 16));
-        waitField = campo(root, "Espera depois de apagar a tela", prefs.getInt("wait_min", 1));
-        openField = campo(root, "Tempo aberto (sem internet, mínimo 2)", prefs.getInt("open_min", 5));
-        closedField = campo(root, "Tempo fechado (com internet, mínimo 2)", prefs.getInt("closed_min", 2));
-        telaField = campo(root, "Segundos de tela acesa no gatilho (1–30)", prefs.getInt("tela_seg", 5));
-        root.addView(botao("Salvar tempos", this::salvar));
+        waitField = campo(root, "Espera depois de apagar a tela", prefs.getInt("wait_min", 3));
+        offField = campo(root, "Tempo sem internet (mínimo 2)", prefs.getInt("off_min", 15));
+        onField = campo(root, "Tempo com internet (mínimo 2)", prefs.getInt("on_min", 2));
+
+        telaBox = new CheckBox(this);
+        telaBox.setText("Acender a tela interrompe o ciclo (e religa os dados na hora)");
+        telaBox.setChecked(prefs.getBoolean("tela_interrompe", true));
+        root.addView(telaBox);
+
+        root.addView(botao("Salvar configurações", this::salvar));
 
         cicloSwitch = new Switch(this);
         cicloSwitch.setText("Ciclo ligado");
@@ -123,6 +101,12 @@ public class MainActivity extends Activity {
             if (!suprimir) ligarCiclo(on);
         });
         root.addView(cicloSwitch);
+
+        root.addView(texto("Testar as rotinas agora, com a tela acesa (o ciclo precisa estar ligado):", 14));
+        LinearLayout teste = new LinearLayout(this);
+        teste.addView(botao("Enviar desligar", () -> testar(CicloService.ACTION_TESTE_OFF)));
+        teste.addView(botao("Enviar ligar", () -> testar(CicloService.ACTION_TESTE_ON)));
+        root.addView(teste);
 
         LinearLayout linha = new LinearLayout(this);
         linha.addView(botao("Atualizar histórico", this::atualizar));
@@ -140,6 +124,15 @@ public class MainActivity extends Activity {
         setContentView(sv);
     }
 
+    private void testar(String action) {
+        if (!prefs.getBoolean("enabled", false)) {
+            toast("Ligue o ciclo primeiro.");
+            return;
+        }
+        startForegroundService(new Intent(this, CicloService.class).setAction(action));
+        toast("Sinal enviado. Veja se o ícone de dados muda.");
+    }
+
     private void ligarCiclo(boolean on) {
         if (on && !salvar()) {
             suprimir = true;
@@ -149,11 +142,11 @@ public class MainActivity extends Activity {
         }
         prefs.edit().putBoolean("enabled", on).apply();
         if (on) {
-            Registro.add(this, "Ciclo ligado, gatilho " + prefs.getString("modo", "midia") + " (espera " + prefs.getInt("wait_min", 1) + ", aberto "
-                    + prefs.getInt("open_min", 5) + ", fechado " + prefs.getInt("closed_min", 2) + " min, tela "
-                    + prefs.getInt("tela_seg", 5) + " s).");
+            Registro.add(this, "Ciclo ligado (\"" + CicloService.palavraOff(prefs) + "\"/\"" + CicloService.palavraOn(prefs)
+                    + "\", espera " + prefs.getInt("wait_min", 3) + ", sem internet " + prefs.getInt("off_min", 15)
+                    + ", com internet " + prefs.getInt("on_min", 2) + " min, tela "
+                    + (prefs.getBoolean("tela_interrompe", true) ? "interrompe" : "não interrompe") + ").");
             startForegroundService(new Intent(this, CicloService.class));
-            if (!Settings.canDrawOverlays(this)) toast("Falta permitir \"Aparecer sobre outros apps\".");
         } else {
             startService(new Intent(this, CicloService.class).setAction(CicloService.ACTION_STOP));
         }
@@ -161,26 +154,40 @@ public class MainActivity extends Activity {
     }
 
     private boolean salvar() {
-        Integer w = ler(waitField, 1, 120), o = ler(openField, 2, 1440), c = ler(closedField, 2, 1440),
-                t = ler(telaField, 1, 30);
-        if (w == null || o == null || c == null || t == null) {
-            toast("Tempos inválidos: espera 1–120, aberto e fechado 2–1440, tela 1–30 s.");
+        Integer w = ler(waitField, 1, 120), off = ler(offField, 2, 1440), on = ler(onField, 2, 1440);
+        if (w == null || off == null || on == null) {
+            toast("Tempos inválidos: espera 1–120, sem e com internet 2–1440.");
             return false;
         }
-        prefs.edit().putInt("wait_min", w).putInt("open_min", o).putInt("closed_min", c).putInt("tela_seg", t).apply();
-        toast("Tempos salvos.");
+        String pOff = palavraOffField.getText().toString().trim();
+        String pOn = palavraOnField.getText().toString().trim();
+        if (pOff.isEmpty() || pOn.isEmpty()) {
+            toast("As duas palavras são obrigatórias.");
+            return false;
+        }
+        String a = pOff.toLowerCase(Locale.ROOT), b = pOn.toLowerCase(Locale.ROOT);
+        if (a.contains(b) || b.contains(a)) {
+            toast("Uma palavra está dentro da outra. Ex.: \"Desligar\" contém \"ligar\". Use \"Ativar\".");
+            return false;
+        }
+        boolean ativo = prefs.getBoolean("enabled", false);
+        if (ativo && (!pOff.equals(CicloService.palavraOff(prefs)) || !pOn.equals(CicloService.palavraOn(prefs)))) {
+            toast("Desligue o ciclo antes de trocar as palavras.");
+            return false;
+        }
+        prefs.edit().putInt("wait_min", w).putInt("off_min", off).putInt("on_min", on)
+                .putString("palavra_off", pOff).putString("palavra_on", pOn)
+                .putBoolean("tela_interrompe", telaBox.isChecked()).apply();
+        toast("Configurações salvas.");
         return true;
     }
 
     private void atualizar() {
-        boolean overlay = Settings.canDrawOverlays(this);
         boolean bateria = getSystemService(PowerManager.class).isIgnoringBatteryOptimizations(getPackageName());
         boolean notif = Build.VERSION.SDK_INT < 33
                 || checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED;
-        permView.setText("Aparecer sobre outros apps: " + (overlay ? "OK" : "FALTA")
-                + "\nBateria sem restrições: " + (bateria ? "OK" : "FALTA")
-                + "\nNotificações: " + (notif ? "OK" : "FALTA")
-                + "\nAcessibilidade (opcional): " + (TelaService.ativo() ? "OK" : "desligada"));
+        permView.setText("Notificações: " + (notif ? "OK" : "FALTA (sem elas não há sinal)")
+                + "\nBateria sem restrições: " + (bateria ? "OK" : "FALTA"));
         suprimir = true;
         cicloSwitch.setChecked(prefs.getBoolean("enabled", false));
         suprimir = false;
@@ -193,15 +200,12 @@ public class MainActivity extends Activity {
             startActivity(new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
                     Uri.parse("package:" + getPackageName())));
         } catch (RuntimeException e) {
-            abrir(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + getPackageName())));
-        }
-    }
-
-    private void abrir(Intent i) {
-        try {
-            startActivity(i);
-        } catch (RuntimeException e) {
-            toast("Não consegui abrir essa configuração.");
+            try {
+                startActivity(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                        Uri.parse("package:" + getPackageName())));
+            } catch (RuntimeException e2) {
+                toast("Não consegui abrir essa configuração.");
+            }
         }
     }
 
@@ -219,6 +223,16 @@ public class MainActivity extends Activity {
         EditText e = new EditText(this);
         e.setInputType(InputType.TYPE_CLASS_NUMBER);
         e.setText(String.valueOf(valor));
+        root.addView(e);
+        return e;
+    }
+
+    private EditText campoTexto(LinearLayout root, String rotulo, String valor) {
+        root.addView(texto(rotulo, 14));
+        EditText e = new EditText(this);
+        e.setInputType(InputType.TYPE_CLASS_TEXT);
+        e.setSingleLine(true);
+        e.setText(valor);
         root.addView(e);
         return e;
     }

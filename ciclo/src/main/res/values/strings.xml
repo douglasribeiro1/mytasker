@@ -1,4 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <string name="tela_service_desc">Usado só para apagar a tela logo depois que o Ciclo Dados a acende para disparar a rotina. Não lê nada da tela.</string>
-</resources>
