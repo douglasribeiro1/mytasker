@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Ícone da notificação: barras de sinal com um "x" pequeno. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path android:fillColor="#FFFFFFFF" android:pathData="M3,18h3v3h-3z" />
+    <path android:fillColor="#FFFFFFFF" android:pathData="M8,14h3v7h-3z" />
+    <path android:fillColor="#FFFFFFFF" android:pathData="M13,10h3v11h-3z" />
+    <path android:fillColor="#FFFFFFFF" android:pathData="M18,3l1.4,1.4 1.6,-1.6 1,1 -1.6,1.6 1.6,1.6 -1,1 -1.6,-1.6 -1.6,1.6 -1,-1 1.6,-1.6 -1.6,-1.6z" />
+</vector>

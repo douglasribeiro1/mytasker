@@ -24,6 +24,10 @@ import android.os.SystemClock;
 import android.provider.Settings;
 import android.telephony.TelephonyManager;
 
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.Locale;
+
 /**
  * Sinaliza a rotina da Samsung por uma notificação persistente que muda de texto:
  * "Desligar" no tempo sem internet, "Ativar" no tempo com internet (as palavras são configuráveis).
@@ -104,6 +108,20 @@ public class CicloService extends Service {
         return START_STICKY;
     }
 
+    /** Guarda a fase atual para a tela do app mostrar o status. */
+    private void fase(String f, int minutos) {
+        prefs.edit().putString("fase", f)
+                .putLong("fase_ate", minutos > 0 ? System.currentTimeMillis() + minutos * 60_000L : 0).apply();
+    }
+
+    static String hora(long t) {
+        return new SimpleDateFormat("HH:mm", Locale.getDefault()).format(new Date(t));
+    }
+
+    private static String ate(int minutos) {
+        return hora(System.currentTimeMillis() + minutos * 60_000L);
+    }
+
     private boolean telaInterrompe() {
         return prefs.getBoolean("tela_interrompe", true);
     }
@@ -114,7 +132,8 @@ public class CicloService extends Service {
         Registro.add(this, "Tela apagou. \"" + palavraOff(prefs) + "\" em " + espera + " min.");
         setStep(ESPERA);
         agendar(espera);
-        notificar(neutro("Tela apagada: começa em " + espera + " min"));
+        fase("espera", espera);
+        notificar(neutro("Tela apagada: começa às " + ate(espera)));
     }
 
     private void telaAcendeu() {
@@ -129,6 +148,7 @@ public class CicloService extends Service {
             if (step != IDLE) Registro.add(this, "Tela acendeu: ciclo parado.");
             notificar(neutro("Aguardando a tela apagar"));
         }
+        fase("idle", 0);
     }
 
     private void tick() {
@@ -150,10 +170,13 @@ public class CicloService extends Service {
                         Registro.add(this, "Dados já estavam desligados: nada a fazer agora.");
                         setStep(ON);
                         agendar(off + on);
+                        fase("pausa", off + on);
+                        notificar(neutro("Dados desligados por você: tenta de novo às " + ate(off + on)));
                         break;
                     }
                     Registro.add(this, "Enviando \"" + palavraOff(prefs) + "\".");
                     sinalDesligar(off);
+                    fase("off", off);
                     setStep(OFF_CONF);
                     agendar(1);
                     break;
@@ -165,6 +188,7 @@ public class CicloService extends Service {
                 case OFF:
                     Registro.add(this, "Enviando \"" + palavraOn(prefs) + "\".");
                     sinalLigar(on);
+                    fase("on", on);
                     setStep(ON_CONF);
                     agendar(1);
                     break;
@@ -188,7 +212,7 @@ public class CicloService extends Service {
         PendingIntent abrir = PendingIntent.getActivity(this, 0,
                 new Intent(this, MainActivity.class), PendingIntent.FLAG_IMMUTABLE);
         return new Notification.Builder(this, CHANNEL)
-                .setSmallIcon(android.R.drawable.ic_popup_sync)
+                .setSmallIcon(R.drawable.ic_stat)
                 .setContentTitle(titulo)
                 .setContentText(texto)
                 .setContentIntent(abrir)
@@ -204,12 +228,12 @@ public class CicloService extends Service {
     }
 
     private void sinalDesligar(int minutos) {
-        String t = minutos > 0 ? "Sem internet por " + minutos + " min" : "Sinal de teste";
+        String t = minutos > 0 ? "Sem internet até " + ate(minutos) : "Sinal de teste";
         notificar(sinal(palavraOff(prefs), t));
     }
 
     private void sinalLigar(int minutos) {
-        String t = minutos > 0 ? "Com internet por " + minutos + " min" : "Dados de volta";
+        String t = minutos > 0 ? "Com internet até " + ate(minutos) : "Dados de volta";
         notificar(sinal(palavraOn(prefs), t));
     }
 
@@ -254,6 +278,7 @@ public class CicloService extends Service {
         cancelar();
         int step = prefs.getInt("step", IDLE);
         setStep(IDLE);
+        fase("idle", 0);
         if (receiverOn) {
             unregisterReceiver(telaReceiver);
             receiverOn = false;

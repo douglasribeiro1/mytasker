@@ -15,7 +15,8 @@
         android:label="Ciclo Dados"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round"
-        android:supportsRtl="true">
+        android:supportsRtl="true"
+        android:theme="@style/Tema">
 
         <activity
             android:name=".MainActivity"
