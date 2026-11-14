@@ -36,7 +36,21 @@
             android:launchMode="singleTask"
             android:taskAffinity="com.douglasribeiro.ciclodados.janela"
             android:showWhenLocked="true"
-            android:noHistory="false" />
+            android:turnScreenOn="true" />
+
+        <!-- Opcional: apaga a tela logo após o gatilho, como o botão lateral. Não lê a tela. -->
+        <service
+            android:name=".TelaService"
+            android:exported="false"
+            android:label="Ciclo Dados: apagar tela"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/tela_service" />
+        </service>
 
         <service
             android:name=".CicloService"

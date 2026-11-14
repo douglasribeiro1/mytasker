@@ -28,7 +28,7 @@ public class MainActivity extends Activity {
     private SharedPreferences prefs;
     private TextView permView;
     private TextView logView;
-    private EditText waitField, openField, closedField;
+    private EditText waitField, openField, closedField, telaField;
     private Switch cicloSwitch;
     private boolean suprimir;
 
@@ -60,7 +60,9 @@ public class MainActivity extends Activity {
         root.addView(titulo);
 
         root.addView(texto(
-                "1) Dê as três permissões abaixo.\n"
+                "Com a tela apagada, o app acende a tela por poucos segundos (brilho mínimo) só para a rotina "
+                + "ver o app aberto, apaga a tela e continua aberto pelo tempo sem internet.\n\n"
+                + "1) Dê as permissões abaixo (Acessibilidade é opcional: serve para apagar a tela na hora).\n"
                 + "2) Na Samsung (Modos e Rotinas), crie a rotina: SE \"App aberto: Ciclo Dados\" "
                 + "ENTÃO \"Dados móveis: desligado\".\n"
                 + "3) Ligue o ciclo, apague a tela e deixe o celular parado uns 15–20 min.\n"
@@ -76,11 +78,16 @@ public class MainActivity extends Activity {
         root.addView(botao("Permitir \"Aparecer sobre outros apps\"", () ->
                 abrir(new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:" + getPackageName())))));
         root.addView(botao("Bateria: deixar sem restrições", this::pedirBateria));
+        root.addView(botao("Acessibilidade: permitir apagar a tela (opcional)", () ->
+                abrir(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))));
+        root.addView(texto("Se a Acessibilidade aparecer bloqueada: Configurações → Aplicativos → Ciclo Dados → "
+                + "⋮ (canto de cima) → \"Permitir configurações restritas\" e tente de novo.", 12));
 
         root.addView(texto("\nTempos (minutos):", 16));
         waitField = campo(root, "Espera depois de apagar a tela", prefs.getInt("wait_min", 1));
         openField = campo(root, "Tempo aberto (sem internet, mínimo 2)", prefs.getInt("open_min", 5));
         closedField = campo(root, "Tempo fechado (com internet, mínimo 2)", prefs.getInt("closed_min", 2));
+        telaField = campo(root, "Segundos de tela acesa no gatilho (1–30)", prefs.getInt("tela_seg", 5));
         root.addView(botao("Salvar tempos", this::salvar));
 
         cicloSwitch = new Switch(this);
@@ -118,7 +125,8 @@ public class MainActivity extends Activity {
         prefs.edit().putBoolean("enabled", on).apply();
         if (on) {
             Registro.add(this, "Ciclo ligado (espera " + prefs.getInt("wait_min", 1) + ", aberto "
-                    + prefs.getInt("open_min", 5) + ", fechado " + prefs.getInt("closed_min", 2) + " min).");
+                    + prefs.getInt("open_min", 5) + ", fechado " + prefs.getInt("closed_min", 2) + " min, tela "
+                    + prefs.getInt("tela_seg", 5) + " s).");
             startForegroundService(new Intent(this, CicloService.class));
             if (!Settings.canDrawOverlays(this)) toast("Falta permitir \"Aparecer sobre outros apps\".");
         } else {
@@ -128,12 +136,13 @@ public class MainActivity extends Activity {
     }
 
     private boolean salvar() {
-        Integer w = ler(waitField, 1, 120), o = ler(openField, 2, 1440), c = ler(closedField, 2, 1440);
-        if (w == null || o == null || c == null) {
-            toast("Tempos inválidos: espera 1–120, aberto e fechado 2–1440.");
+        Integer w = ler(waitField, 1, 120), o = ler(openField, 2, 1440), c = ler(closedField, 2, 1440),
+                t = ler(telaField, 1, 30);
+        if (w == null || o == null || c == null || t == null) {
+            toast("Tempos inválidos: espera 1–120, aberto e fechado 2–1440, tela 1–30 s.");
             return false;
         }
-        prefs.edit().putInt("wait_min", w).putInt("open_min", o).putInt("closed_min", c).apply();
+        prefs.edit().putInt("wait_min", w).putInt("open_min", o).putInt("closed_min", c).putInt("tela_seg", t).apply();
         toast("Tempos salvos.");
         return true;
     }
@@ -145,7 +154,8 @@ public class MainActivity extends Activity {
                 || checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED;
         permView.setText("Aparecer sobre outros apps: " + (overlay ? "OK" : "FALTA")
                 + "\nBateria sem restrições: " + (bateria ? "OK" : "FALTA")
-                + "\nNotificações: " + (notif ? "OK" : "FALTA"));
+                + "\nNotificações: " + (notif ? "OK" : "FALTA")
+                + "\nAcessibilidade (opcional): " + (TelaService.ativo() ? "OK" : "desligada"));
         suprimir = true;
         cicloSwitch.setChecked(prefs.getBoolean("enabled", false));
         suprimir = false;

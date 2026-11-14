@@ -41,12 +41,28 @@ public class CicloService extends Service {
 
     private SharedPreferences prefs;
     private boolean receiverOn;
+    /** true enquanto a tela está acesa porque o próprio app acendeu (não é você usando o celular). */
+    static volatile boolean gatilhoAtivo;
 
     private final BroadcastReceiver telaReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
-            if (Intent.ACTION_SCREEN_OFF.equals(intent.getAction())) telaApagou();
-            else if (Intent.ACTION_SCREEN_ON.equals(intent.getAction())) telaAcendeu();
+            String a = intent.getAction();
+            if (Intent.ACTION_USER_PRESENT.equals(a)) {
+                // Desbloqueio é sempre você, nunca o gatilho.
+                gatilhoAtivo = false;
+                telaAcendeu();
+            } else if (Intent.ACTION_SCREEN_OFF.equals(a)) {
+                if (gatilhoAtivo) {
+                    gatilhoAtivo = false;
+                    Registro.add(CicloService.this, "Tela apagou de novo (fim do gatilho). App continua aberto.");
+                } else {
+                    telaApagou();
+                }
+            } else if (Intent.ACTION_SCREEN_ON.equals(a)) {
+                if (gatilhoAtivo) Registro.add(CicloService.this, "Tela acesa pelo gatilho.");
+                else telaAcendeu();
+            }
         }
     };
 
@@ -71,6 +87,7 @@ public class CicloService extends Service {
             IntentFilter f = new IntentFilter();
             f.addAction(Intent.ACTION_SCREEN_OFF);
             f.addAction(Intent.ACTION_SCREEN_ON);
+            f.addAction(Intent.ACTION_USER_PRESENT);
             registerReceiver(telaReceiver, f);
             receiverOn = true;
         }
@@ -87,6 +104,7 @@ public class CicloService extends Service {
     }
 
     private void telaAcendeu() {
+        gatilhoAtivo = false;
         int step = prefs.getInt("step", IDLE);
         cancelar();
         if (step == ABERTO_CONF || step == ABERTO) {
@@ -104,7 +122,7 @@ public class CicloService extends Service {
         PowerManager.WakeLock wl = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "ciclodados:tick");
         wl.acquire(30_000);
         try {
-            if (pm.isInteractive()) {
+            if (pm.isInteractive() && !gatilhoAtivo) {
                 telaAcendeu();
                 return;
             }
@@ -148,12 +166,14 @@ public class CicloService extends Service {
         if (Build.VERSION.SDK_INT >= 23 && !Settings.canDrawOverlays(this)) {
             Registro.add(this, "ERRO: falta a permissão \"Aparecer sobre outros apps\". O Android pode bloquear a abertura.");
         }
+        gatilhoAtivo = true;
         try {
             Intent i = new Intent(this, JanelaActivity.class);
             i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_NO_ANIMATION);
             startActivity(i);
             Registro.add(this, "Abrindo o app (pedido enviado ao Android).");
         } catch (RuntimeException e) {
+            gatilhoAtivo = false;
             Registro.add(this, "ERRO ao abrir o app: " + e.getClass().getSimpleName());
         }
     }
