@@ -60,3 +60,10 @@ jobs:
           name: mytasker-release
           path: app/build/outputs/apk/release/*.apk
           if-no-files-found: error
+
+      - name: Enviar APK do Ciclo Dados (teste sem Shizuku)
+        uses: actions/upload-artifact@v4
+        with:
+          name: ciclo-dados-release
+          path: ciclo/build/outputs/apk/release/*.apk
+          if-no-files-found: error
