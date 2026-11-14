@@ -20,7 +20,7 @@ Lista com quantos períodos você quiser. Cada período tem:
 - nome, dias da semana, início e fim (pode atravessar a meia-noite);
 - comportamento:
   - ciclo com tempos próprios;
-  - dados sempre desligados *(em aberto: vale com a tela acesa?)*;
+  - economia o tempo todo (vale com a tela acesa ou apagada);
   - pausado (internet normal).
 
 Fora dos períodos, valem os tempos padrão. Se dois períodos se sobrepõem, vale o que estiver mais acima
