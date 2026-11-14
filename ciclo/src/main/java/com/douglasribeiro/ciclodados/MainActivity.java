@@ -16,6 +16,8 @@ import android.util.TypedValue;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.LinearLayout;
+import android.widget.RadioButton;
+import android.widget.RadioGroup;
 import android.widget.ScrollView;
 import android.widget.Switch;
 import android.widget.TextView;
@@ -60,11 +62,13 @@ public class MainActivity extends Activity {
         root.addView(titulo);
 
         root.addView(texto(
-                "Com a tela apagada, o app acende a tela por poucos segundos (brilho mínimo) só para a rotina "
-                + "ver o app aberto, apaga a tela e continua aberto pelo tempo sem internet.\n\n"
-                + "1) Dê as permissões abaixo (Acessibilidade é opcional: serve para apagar a tela na hora).\n"
-                + "2) Na Samsung (Modos e Rotinas), crie a rotina: SE \"App aberto: Ciclo Dados\" "
+                "Com a tela apagada, o app aciona a rotina da Samsung pelo tempo sem internet. Dois gatilhos:\n"
+                + "• Mídia: toca um áudio silencioso. Rotina: SE \"A mídia está sendo reproduzida\" "
                 + "ENTÃO \"Dados móveis: desligado\".\n"
+                + "• Tela acesa: acende a tela alguns segundos e deixa o app aberto. Rotina: SE \"App aberto: "
+                + "Ciclo Dados\" ENTÃO \"Dados móveis: desligado\".\n\n"
+                + "1) Dê as permissões abaixo (Acessibilidade só serve para o gatilho de tela).\n"
+                + "2) Crie a rotina do gatilho escolhido em Modos e Rotinas.\n"
                 + "3) Ligue o ciclo, apague a tela e deixe o celular parado uns 15–20 min.\n"
                 + "4) Volte aqui e leia o histórico.\n\n"
                 + "Obs.: enquanto esta tela está aberta, a rotina também desliga os dados. "
@@ -82,6 +86,27 @@ public class MainActivity extends Activity {
                 abrir(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))));
         root.addView(texto("Se a Acessibilidade aparecer bloqueada: Configurações → Aplicativos → Ciclo Dados → "
                 + "⋮ (canto de cima) → \"Permitir configurações restritas\" e tente de novo.", 12));
+
+        root.addView(texto("\nGatilho:", 16));
+        RadioGroup modo = new RadioGroup(this);
+        RadioButton midia = new RadioButton(this);
+        midia.setText("Mídia (áudio silencioso, tela não acende)");
+        midia.setId(1);
+        RadioButton tela = new RadioButton(this);
+        tela.setText("Tela acesa por alguns segundos (app aberto)");
+        tela.setId(2);
+        modo.addView(midia);
+        modo.addView(tela);
+        modo.check("tela".equals(prefs.getString("modo", "midia")) ? 2 : 1);
+        modo.setOnCheckedChangeListener((g, id) -> {
+            if (prefs.getBoolean("enabled", false)) {
+                toast("Desligue o ciclo antes de trocar o gatilho.");
+                g.check("tela".equals(prefs.getString("modo", "midia")) ? 2 : 1);
+                return;
+            }
+            prefs.edit().putString("modo", id == 2 ? "tela" : "midia").apply();
+        });
+        root.addView(modo);
 
         root.addView(texto("\nTempos (minutos):", 16));
         waitField = campo(root, "Espera depois de apagar a tela", prefs.getInt("wait_min", 1));
@@ -124,7 +149,7 @@ public class MainActivity extends Activity {
         }
         prefs.edit().putBoolean("enabled", on).apply();
         if (on) {
-            Registro.add(this, "Ciclo ligado (espera " + prefs.getInt("wait_min", 1) + ", aberto "
+            Registro.add(this, "Ciclo ligado, gatilho " + prefs.getString("modo", "midia") + " (espera " + prefs.getInt("wait_min", 1) + ", aberto "
                     + prefs.getInt("open_min", 5) + ", fechado " + prefs.getInt("closed_min", 2) + " min, tela "
                     + prefs.getInt("tela_seg", 5) + " s).");
             startForegroundService(new Intent(this, CicloService.class));

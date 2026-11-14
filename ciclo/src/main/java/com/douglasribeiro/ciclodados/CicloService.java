@@ -12,6 +12,11 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.content.pm.ServiceInfo;
+import android.media.AudioAttributes;
+import android.media.AudioFormat;
+import android.media.AudioTrack;
+import android.media.session.MediaSession;
+import android.media.session.PlaybackState;
 import android.net.ConnectivityManager;
 import android.net.Network;
 import android.net.NetworkCapabilities;
@@ -43,6 +48,14 @@ public class CicloService extends Service {
     private boolean receiverOn;
     /** true enquanto a tela está acesa porque o próprio app acendeu (não é você usando o celular). */
     static volatile boolean gatilhoAtivo;
+
+    private AudioTrack audio;
+    private MediaSession sessao;
+
+    /** "midia" (áudio silencioso) ou "tela" (acende a tela e deixa o app aberto). */
+    private boolean modoMidia() {
+        return !"tela".equals(prefs.getString("modo", "midia"));
+    }
 
     private final BroadcastReceiver telaReceiver = new BroadcastReceiver() {
         @Override
@@ -108,8 +121,8 @@ public class CicloService extends Service {
         int step = prefs.getInt("step", IDLE);
         cancelar();
         if (step == ABERTO_CONF || step == ABERTO) {
-            JanelaActivity.fechar();
-            Registro.add(this, "Tela acendeu: app fechado, a rotina deve religar os dados.");
+            encerrarGatilho();
+            Registro.add(this, "Tela acendeu: gatilho encerrado, a rotina deve religar os dados.");
         } else if (step != IDLE) {
             Registro.add(this, "Tela acendeu: ciclo parado.");
         }
@@ -132,10 +145,11 @@ public class CicloService extends Service {
             switch (step) {
                 case ESPERA:
                 case FECHADO:
-                    abrirJanela();
+                    if (modoMidia()) tocarSilencio(); else abrirJanela();
                     setStep(ABERTO_CONF);
                     agendar(1);
-                    notificar("App aberto: dados devem estar desligados");
+                    notificar(modoMidia() ? "Tocando silêncio: dados devem estar desligados"
+                            : "App aberto: dados devem estar desligados");
                     break;
                 case ABERTO_CONF:
                     Registro.add(this, "1 min após abrir → " + estado() + "   (esperado: DESLIGADOS)");
@@ -143,8 +157,8 @@ public class CicloService extends Service {
                     agendar(aberto - 1);
                     break;
                 case ABERTO:
-                    JanelaActivity.fechar();
-                    Registro.add(this, "Fechando o app.");
+                    encerrarGatilho();
+                    Registro.add(this, modoMidia() ? "Parando o áudio silencioso." : "Fechando o app.");
                     setStep(FECHADO_CONF);
                     agendar(1);
                     notificar("App fechado: dados devem voltar");
@@ -197,12 +211,14 @@ public class CicloService extends Service {
             else if (nc.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)) rede = "dados móveis";
             else rede = "outra";
         }
-        return "dados móveis: " + dados + " | rede em uso: " + rede + " | janela: " + JanelaActivity.estado;
+        String g = modoMidia() ? "áudio: " + (audio != null && audio.getPlayState() == AudioTrack.PLAYSTATE_PLAYING ? "tocando" : "parado")
+                : "janela: " + JanelaActivity.estado;
+        return "dados móveis: " + dados + " | rede em uso: " + rede + " | " + g;
     }
 
     private void parar(boolean anotar) {
         cancelar();
-        JanelaActivity.fechar();
+        encerrarGatilho();
         setStep(IDLE);
         if (receiverOn) {
             unregisterReceiver(telaReceiver);
@@ -213,8 +229,67 @@ public class CicloService extends Service {
         stopSelf();
     }
 
+    /** Fecha a janela e para o áudio, o que estiver ativo. */
+    private void encerrarGatilho() {
+        JanelaActivity.fechar();
+        pararSilencio();
+    }
+
+    /**
+     * Toca silêncio (zeros) em loop como mídia, com uma sessão de mídia "tocando", para a condição
+     * "A mídia está sendo reproduzida" da Samsung. Não pede foco de áudio: não interrompe sua música.
+     */
+    private void tocarSilencio() {
+        pararSilencio();
+        try {
+            int rate = 8000;
+            byte[] zeros = new byte[rate * 2]; // 1 s, mono, 16 bits
+            audio = new AudioTrack.Builder()
+                    .setAudioAttributes(new AudioAttributes.Builder()
+                            .setUsage(AudioAttributes.USAGE_MEDIA)
+                            .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                            .build())
+                    .setAudioFormat(new AudioFormat.Builder()
+                            .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                            .setSampleRate(rate)
+                            .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
+                            .build())
+                    .setTransferMode(AudioTrack.MODE_STATIC)
+                    .setBufferSizeInBytes(zeros.length)
+                    .build();
+            audio.write(zeros, 0, zeros.length);
+            audio.setLoopPoints(0, rate, -1);
+            audio.play();
+
+            sessao = new MediaSession(this, "ciclodados");
+            sessao.setPlaybackState(new PlaybackState.Builder()
+                    .setState(PlaybackState.STATE_PLAYING, 0, 1f)
+                    .setActions(PlaybackState.ACTION_STOP)
+                    .build());
+            sessao.setActive(true);
+            Registro.add(this, "Tocando áudio silencioso.");
+        } catch (RuntimeException e) {
+            Registro.add(this, "ERRO ao tocar o áudio: " + e.getClass().getSimpleName());
+            pararSilencio();
+        }
+    }
+
+    private void pararSilencio() {
+        if (audio != null) {
+            try { audio.stop(); } catch (RuntimeException ignored) {}
+            audio.release();
+            audio = null;
+        }
+        if (sessao != null) {
+            sessao.setActive(false);
+            sessao.release();
+            sessao = null;
+        }
+    }
+
     @Override
     public void onDestroy() {
+        pararSilencio();
         if (receiverOn) {
             unregisterReceiver(telaReceiver);
             receiverOn = false;
@@ -261,7 +336,8 @@ public class CicloService extends Service {
     private void primeiroPlano(String texto) {
         Notification n = notificacao(texto);
         if (Build.VERSION.SDK_INT >= 34) {
-            startForeground(NOTIF_ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE);
+            startForeground(NOTIF_ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+                    | ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK);
         } else {
             startForeground(NOTIF_ID, n);
         }
