@@ -1,6 +1,6 @@
 # MyTasker
 
-App Android que alterna os dados móveis em ciclos, por exemplo 15 minutos desligados e 2 minutos ligados, para economizar bateria. Com a tela acesa, os dados voltam na hora. Usa o [Shizuku](https://shizuku.rikka.app/), então não precisa de root.
+App Android que, com a tela apagada, desliga dados móveis e/ou Wi-Fi em ciclos (por exemplo 15 minutos desligado e 2 minutos ligado para sincronizar), para economizar bateria. Usa o [Shizuku](https://shizuku.rikka.app/), então não precisa de root.
 
 ## Requisitos
 
@@ -18,53 +18,38 @@ App Android que alterna os dados móveis em ciclos, por exemplo 15 minutos desli
 
 ## Como funciona
 
-- Tela apagada: desliga os dados móveis, espera o intervalo "desligado" e liga por o intervalo "ligado". Repete.
-- Tela acesa: liga os dados na hora.
-- Se o celular estiver no Wi-Fi, o ciclo não desliga os dados.
+- Você escolhe no app o que o ciclo pode desligar: dados móveis, Wi-Fi ou os dois.
+- Tela apagada: espera o tempo de segurança (padrão 3 minutos), para não cortar uma conversa ou um carregamento.
+- Depois desliga só o que estiver ligado naquele momento. O que você deixou desligado continua desligado.
+- Espera o tempo "desligado", religa o que desligou pelo tempo "ligado", e repete.
+- Tela acesa: cancela o ciclo e religa na hora o que o ciclo tinha desligado.
+- Os tempos usam alarmes do Android que funcionam mesmo em sono profundo (Doze).
 
 ## Atualizações sem reinstalar
 
-O Android só instala uma nova versão por cima da antiga se tiver a mesma chave de assinatura. Por isso:
+O Android só instala por cima se a chave de assinatura for a mesma e o `versionCode` for maior. O `versionCode` sobe sozinho a cada build no GitHub Actions. Para a chave, faça uma vez:
 
-- Use sempre o mesmo `release.jks` e o mesmo `keystore.properties`. Faça backup deles fora do GitHub. Se perder a chave, as próximas versões terão que ser instaladas do zero.
-- Aumente `versionCode` em `app/build.gradle.kts` a cada versão publicada.
+1. No GitHub: Settings > Secrets and variables > Actions > New repository secret. Nome `KEYSTORE_PASSWORD`, valor uma senha forte (12 caracteres ou mais). Guarde essa senha também num gerenciador de senhas.
+2. Aba Actions > "Gerar chave de assinatura (rodar uma vez)" > Run workflow.
+3. Ao terminar, baixe o artifact `chave-mytasker`. Abra `KEYSTORE_B64.txt`, copie todo o texto e crie o secret `KEYSTORE_B64` com ele. Guarde `release-backup.jks` fora do GitHub (por exemplo no Google Drive), como backup.
+4. Apague o artifact da execução (ícone de lixeira).
+5. Rode Actions > Build APK. Desinstale o app antigo uma última vez e instale este APK. Daqui para frente, é só instalar por cima.
 
-## Compilar
-
-Com o Android Studio, abra a pasta do projeto. Para o APK assinado, coloque `release.jks` e `keystore.properties` na raiz do projeto e rode `Build > Generate Signed App Bundle / APK`. Ou, no terminal:
-
-```
-./gradlew assembleRelease
-```
-
-O arquivo `keystore.properties` tem este formato:
-
-```
-storeFile=release.jks
-storePassword=...
-keyAlias=mytasker
-keyPassword=...
-```
-
-Nunca faça commit de `*.jks` ou `keystore.properties`. O `.gitignore` já ignora os dois.
+Se perder a chave e a senha, as próximas versões terão que ser instaladas do zero.
 
 ## Build automático no GitHub Actions
 
-O workflow `.github/workflows/build.yml` compila o APK a cada push na `main` e também pode ser disparado manualmente (aba Actions > Build APK > Run workflow). Para o APK sair assinado, cadastre dois secrets em Settings > Secrets and variables > Actions:
-
-- `KEYSTORE_B64`: o conteúdo do `release.jks` em base64, em uma linha.
-- `KEYSTORE_PASSWORD`: o valor de `storePassword` do `keystore.properties`.
-
-Sem os secrets, o build roda mas o APK sai sem assinatura. O APK aparece como artifact `mytasker-release` na execução.
+O workflow `.github/workflows/build.yml` compila o APK a cada push na `main` e também pode ser disparado manualmente. O APK aparece como artifact `mytasker-release`. Sem os secrets, o APK sai sem assinatura.
 
 ## Segurança
 
-- O MyTasker só pede `ACCESS_NETWORK_STATE`, para saber se o celular está no Wi-Fi. Não pede internet.
+- O MyTasker não pede acesso à internet. Pede só permissões de estado de rede/Wi-Fi, alarmes, notificação e manter o processador acordado alguns segundos.
+- O serviço que roda com privilégio de shell só executa comandos fixos (`svc data`, `cmd wifi`/`svc wifi`, `settings get global mobile_data`). Ele não recebe comandos de fora.
 - O Shizuku dá ao app autorizado privilégios de shell (ADB). Autorize só o MyTasker.
 - Depois de iniciar o Shizuku, desligue a depuração sem fio se não precisar dela. O Shizuku continua rodando.
 
 ## Limitações conhecidas
 
-- O ciclo usa o comando `svc data enable|disable`. Se o seu aparelho não aceitar o comando, o app mostra "Falha no comando svc data".
+- Se o aparelho não aceitar os comandos, a notificação mostra "Falha ao desligar" ou "Falha ao ligar".
 - Sem root, o Shizuku precisa ser iniciado de novo depois de cada reinício do celular.
-- O intervalo pode variar um pouco, porque o Android pode adiar tarefas com a tela apagada.
+- Desligar o Wi-Fi faz o celular reconectar à rede a cada ciclo, o que leva alguns segundos.
