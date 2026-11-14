@@ -18,7 +18,8 @@
         android:label="Ciclo Dados"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round"
-        android:supportsRtl="true">
+        android:supportsRtl="true"
+        android:appCategory="audio">
 
         <activity
             android:name=".MainActivity"
@@ -38,6 +39,22 @@
             android:taskAffinity="com.douglasribeiro.ciclodados.janela"
             android:showWhenLocked="true"
             android:turnScreenOn="true" />
+
+        <!-- Só para o app aparecer como "app de mídia" na rotina da Samsung. -->
+        <service
+            android:name=".MidiaService"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.media.browse.MediaBrowserService" />
+            </intent-filter>
+        </service>
+        <receiver
+            android:name=".BotaoMidiaReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MEDIA_BUTTON" />
+            </intent-filter>
+        </receiver>
 
         <!-- Opcional: apaga a tela logo após o gatilho, como o botão lateral. Não lê a tela. -->
         <service
