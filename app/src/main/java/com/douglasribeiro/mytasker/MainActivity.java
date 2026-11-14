@@ -8,6 +8,9 @@ import android.content.pm.PackageManager;
 import android.graphics.Typeface;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.PowerManager;
+import android.net.Uri;
+import android.provider.Settings;
 import android.text.InputType;
 import android.util.TypedValue;
 import android.widget.Button;
@@ -123,8 +126,12 @@ public class MainActivity extends Activity {
         permission.setOnClickListener(v -> requestShizukuPermission());
         root.addView(permission);
 
-        root.addView(text("Deixe o MyTasker com a bateria em \"Sem restrições\" nas configurações do app. "
-                + "O Shizuku precisa ser iniciado de novo após cada reinício do celular.", 13, false));
+        Button battery = new Button(this);
+        battery.setText("Bateria: deixar sem restrições");
+        battery.setOnClickListener(v -> requestUnrestrictedBattery());
+        root.addView(battery);
+
+        root.addView(text("O Shizuku precisa ser iniciado de novo após cada reinício do celular.", 13, false));
 
         ScrollView scroll = new ScrollView(this);
         scroll.addView(root);
@@ -168,6 +175,7 @@ public class MainActivity extends Activity {
             }
             prefs.edit().putBoolean("active", true).apply();
             startCycleService();
+            if (!batteryUnrestricted()) requestUnrestrictedBattery();
         } else {
             prefs.edit().putBoolean("active", false).apply();
             stopService(new Intent(this, CicloService.class));
@@ -214,6 +222,27 @@ public class MainActivity extends Activity {
         Shizuku.requestPermission(REQ_SHIZUKU);
     }
 
+    private boolean batteryUnrestricted() {
+        return getSystemService(PowerManager.class).isIgnoringBatteryOptimizations(getPackageName());
+    }
+
+    private void requestUnrestrictedBattery() {
+        if (batteryUnrestricted()) {
+            toast("A bateria do MyTasker já está sem restrições.");
+            return;
+        }
+        try {
+            // Mostra o pedido do sistema: um toque em "Permitir" e pronto.
+            startActivity(new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                    Uri.parse("package:" + getPackageName())));
+        } catch (RuntimeException e) {
+            // Alguns fabricantes bloqueiam o pedido direto: abre a tela de detalhes do app.
+            startActivity(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                    Uri.parse("package:" + getPackageName())));
+            toast("Em Bateria, escolha \"Sem restrições\".");
+        }
+    }
+
     private void refreshStatus() {
         if (statusView == null) return;
         String text;
@@ -226,6 +255,7 @@ public class MainActivity extends Activity {
         } else {
             text = "Shizuku: rodando · sem autorização";
         }
+        text += batteryUnrestricted() ? "\nBateria: sem restrições" : "\nBateria: com restrições (toque no botão abaixo)";
         statusView.setText(text);
     }
 
