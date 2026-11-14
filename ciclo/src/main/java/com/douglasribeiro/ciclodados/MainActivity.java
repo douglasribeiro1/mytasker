@@ -140,6 +140,8 @@ public class MainActivity extends Activity {
             suprimir = false;
             return;
         }
+        // Zera o passo: pode ter sobrado de uma versão anterior.
+        if (on) prefs.edit().putInt("step", 0).apply();
         prefs.edit().putBoolean("enabled", on).apply();
         if (on) {
             Registro.add(this, "Ciclo ligado (\"" + CicloService.palavraOff(prefs) + "\"/\"" + CicloService.palavraOn(prefs)
