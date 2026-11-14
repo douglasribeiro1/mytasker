@@ -141,6 +141,26 @@ final class Periodo {
         return p;
     }
 
+    static List<Periodo> deArray(JSONArray a) {
+        List<Periodo> l = new ArrayList<>();
+        if (a == null) return l;
+        for (int i = 0; i < a.length(); i++) {
+            JSONObject o = a.optJSONObject(i);
+            if (o != null) l.add(de(o));
+        }
+        return l;
+    }
+
+    static JSONArray paraArray(List<Periodo> l) {
+        JSONArray a = new JSONArray();
+        try {
+            for (Periodo p : l) a.put(p.json());
+        } catch (JSONException ignored) {
+        }
+        return a;
+    }
+
+    /** Formato antigo (uma lista só, antes das várias automações). */
     static List<Periodo> carregar(SharedPreferences prefs) {
         List<Periodo> l = new ArrayList<>();
         try {

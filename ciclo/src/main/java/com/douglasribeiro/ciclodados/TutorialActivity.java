@@ -17,6 +17,8 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import java.util.List;
+
 /** Tutorial passo a passo. Abre sozinho na primeira vez e fica no cartão "Como funciona". */
 public class TutorialActivity extends Activity {
 
@@ -34,7 +36,9 @@ public class TutorialActivity extends Activity {
         corDestaque = escuro ? 0xFF8C9EFF : 0xFF3949AB;
 
         SharedPreferences prefs = Registro.prefs(this);
-        String off = CicloService.palavraOff(prefs), on = CicloService.palavraOn(prefs);
+        List<Automacao> todas = Automacao.carregar(prefs);
+        Automacao ex = todas.isEmpty() ? new Automacao() : todas.get(0);
+        String off = ex.off, on = ex.on;
 
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
@@ -46,67 +50,79 @@ public class TutorialActivity extends Activity {
         root.addView(titulo);
 
         passo(root, "A ideia",
-                "Apps comuns não podem desligar os dados móveis. As rotinas da Samsung podem.\n\n"
-                + "O Pulso não desliga nada sozinho: ele mantém uma notificação fixa e troca o texto dela na hora certa. "
-                + "Duas rotinas suas leem esse texto e fazem o trabalho:\n\n"
-                + "• \"" + off + "\" → economia (a rotina desliga o que você escolheu)\n"
-                + "• \"" + on + "\" → normal (a rotina religa)\n\n"
-                + "Você escolhe o que as rotinas fazem: dados móveis, Wi-Fi ou outra coisa.", null, null);
+                "Apps comuns não podem desligar os dados móveis, o Wi-Fi e outras coisas. As rotinas da Samsung podem, "
+                + "mas não sabem fazer ciclos (\"15 min desliga, 2 min liga\").\n\n"
+                + "O Pulso faz a parte do tempo: cada automação tem uma notificação própria cujo título muda entre "
+                + "duas palavras. Duas rotinas suas leem essas palavras e fazem o trabalho:\n\n"
+                + "• palavra de economia (ex.: \"" + off + "\") → a rotina desliga\n"
+                + "• palavra de normal (ex.: \"" + on + "\") → a rotina religa\n\n"
+                + "Você pode ter quantas automações quiser (dados, Wi-Fi, tempo de tela...), cada uma com "
+                + "suas palavras, tempos e horários.", null, null);
 
         passo(root, "1. Permissões",
-                "• Notificações do Pulso: permitidas (é por elas que as rotinas recebem o sinal). "
-                + "Não silencie nem bloqueie a notificação do Pulso.\n"
-                + "• Bateria do Pulso: \"Sem restrições\". Sem isso o Android pode atrasar ou parar o ciclo.",
-                "Abrir bateria do Pulso", () -> abrir(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                "• Notificações do Pulso: permitidas, sem silenciar nem bloquear — é por elas que as rotinas "
+                + "recebem o sinal.\n"
+                + "• Bateria do Pulso: \"Sem restrições\". Sem isso o Android pode atrasar ou parar os ciclos.",
+                "Abrir configurações do Pulso", () -> abrir(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
                         Uri.parse("package:" + getPackageName()))));
 
-        passo(root, "2. Rotina de economia",
+        passo(root, "2. Criar a automação no Pulso",
+                "Toque em \"+ Nova automação\" (ou abra uma existente) e preencha:\n"
+                + "• Nome — só para você.\n"
+                + "• Palavra de economia e palavra de normal — cada uma tem um botão Copiar.\n"
+                + "• Tempos, condições e horários.\n\n"
+                + "Regra das palavras: nenhuma pode estar dentro de outra, nem entre automações diferentes. "
+                + "\"Desligar Wi-Fi\" contém \"ligar Wi-Fi\" — prefira pares como "
+                + "\"Desligar Wi-Fi\" / \"Religar Wi-Fi\" ou \"Wi-Fi OFF\" / \"Wi-Fi ON\". "
+                + "O app avisa se houver conflito.", null, null);
+
+        passo(root, "3. Criar as duas rotinas na Samsung",
                 "Em Configurações → Modos e Rotinas → Rotinas → +:\n\n"
-                + "SE: Notificação recebida → escolha o app Pulso → informe a palavra \"" + off + "\".\n"
-                + "ENTÃO: Dados móveis → Desligado. (Se quiser, acrescente Wi-Fi → Desligado.)\n\n"
-                + "Dê um nome (ex.: \"Pulso economia\") e salve.",
+                + "Rotina de economia\n"
+                + "SE: Notificação recebida → app Pulso → cole a palavra de economia.\n"
+                + "ENTÃO: o que deve desligar (ex.: Dados móveis → Desligado).\n\n"
+                + "Rotina de normal\n"
+                + "SE: Notificação recebida → app Pulso → cole a palavra de normal.\n"
+                + "ENTÃO: o que deve voltar (ex.: Dados móveis → Ligado).\n\n"
+                + "Repita para cada automação.",
                 "Abrir Modos e Rotinas", this::abrirRotinas);
 
-        passo(root, "3. Rotina de volta ao normal",
-                "Crie outra rotina igual, mas:\n\n"
-                + "SE: Notificação recebida → app Pulso → palavra \"" + on + "\".\n"
-                + "ENTÃO: Dados móveis → Ligado. (E Wi-Fi → Ligado, se você colocou na outra.)\n\n"
-                + "As palavras não podem estar uma dentro da outra: \"Desligar\" contém \"ligar\", "
-                + "por isso o padrão para voltar é \"" + on + "\". Dá para trocar em Avançado.", null, null);
-
         passo(root, "4. Testar",
-                "Ligue o Pulso. Em Avançado, toque em \"Enviar desligar\": o ícone de dados deve sumir. "
-                + "Toque em \"Enviar ligar\": ele volta. Se não mudar, revise as rotinas (app e palavra).", null, null);
+                "Ligue o Pulso. Abra a automação e toque em \"Enviar economia\": a rotina deve agir. "
+                + "\"Enviar normal\" desfaz. Se nada acontecer, confira na rotina o app e a palavra (use o Copiar).",
+                null, null);
 
         passo(root, "5. Ciclo padrão",
-                "Com o Pulso ligado:\n"
-                + "• A tela apaga → espera (padrão 3 min) → economia (15 min) → normal (2 min) → economia...\n"
-                + "• Acender a tela volta ao normal na hora (dá para desmarcar).\n"
-                + "• No Wi-Fi ou carregando, fica no normal (dá para desmarcar).\n"
-                + "• Se você mesmo desligou os dados, o Pulso não religa.\n"
-                + "• 1 min depois de voltar ao normal, o Pulso confere se os dados voltaram. Se não, reenvia "
-                + "o sinal e, se ainda falhar, avisa.", null, null);
+                "Para cada automação ativa:\n"
+                + "• A tela apaga → espera → economia → normal → economia...\n"
+                + "• Acender a tela volta ao normal na hora (opcional).\n"
+                + "• No Wi-Fi ou carregando, fica no normal (opcional). Carregando cobre o carro/Android Auto.\n"
+                + "• \"Esta automação controla os dados móveis\": respeita quando você mesmo desliga os dados, "
+                + "confere 1 min depois de voltar ao normal (reenvia e avisa se falhar) e mostra o tempo em economia.",
+                null, null);
 
         passo(root, "6. Horários",
-                "Adicione quantos quiser. Cada um tem dias, início e fim (pode passar da meia-noite) e o que fazer:\n"
+                "Cada automação pode ter quantos horários quiser: dias, início e fim (pode passar da meia-noite) "
+                + "e o que fazer:\n"
                 + "• Economia o tempo todo — mesmo com a tela acesa (ex.: madrugada).\n"
                 + "• Ciclo com tempos próprios — ex.: 30 min economia / 2 min normal.\n"
-                + "• Sem ciclo — tudo normal (ex.: horário de trabalho).\n\n"
-                + "Se dois horários se sobrepõem, vale o de cima. Use ↑ para reordenar. "
+                + "• Sem ciclo — tudo normal.\n\n"
+                + "Se dois horários se sobrepõem, vale o de cima (↑ reordena). "
                 + "Pausa, carregando e Wi-Fi valem acima dos horários.", null, null);
 
         passo(root, "7. Atalhos",
-                "• \"Pausar 1 hora\": na tela do app e na própria notificação. Volta sozinho.\n"
-                + "• Painel rápido: puxe o painel duas vezes → lápis (editar) → arraste o botão \"Pulso\". "
-                + "Toque nele para pausar ou retomar.\n"
+                "• \"Pausar tudo por 1 hora\": na tela do app e na notificação \"Pulso\". Volta sozinho.\n"
+                + "• Painel rápido: puxe o painel → lápis (editar) → arraste o botão \"Pulso\". "
+                + "Toque para pausar ou retomar.\n"
                 + "• O Pulso volta sozinho depois de reiniciar o celular.", null, null);
 
         passo(root, "Se algo não funcionar",
-                "• Nada acontece: confira se a notificação do Pulso aparece e se as rotinas estão ativas.\n"
-                + "• Os dados não voltam: confira a rotina do \"" + on + "\".\n"
-                + "• Se a sua rotina desliga o Wi-Fi, desmarque \"Sem economia quando conectado ao Wi-Fi\".\n"
-                + "• Em Avançado → Histórico aparece tudo o que o Pulso fez, com horário.\n"
-                + "• Mensagens podem chegar com atraso durante a economia; ao acender a tela, chegam na hora. "
+                "• Nada acontece: confira se as notificações do Pulso aparecem e se as rotinas estão ativas.\n"
+                + "• Duas rotinas disparando juntas: uma palavra está dentro de outra — troque.\n"
+                + "• Duas automações mexendo na mesma coisa ao mesmo tempo se atrapalham — evite.\n"
+                + "• Se a rotina desliga o Wi-Fi, não marque \"Sem economia quando conectado ao Wi-Fi\".\n"
+                + "• O Histórico (tela principal) mostra tudo o que o Pulso fez, com horário.\n"
+                + "• Mensagens podem atrasar durante a economia; ao acender a tela, chegam na hora. "
                 + "Ligações normais continuam funcionando.", null, null);
 
         Button ok = botao("Entendi");

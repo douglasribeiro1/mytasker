@@ -13,7 +13,10 @@ public class BootReceiver extends BroadcastReceiver {
         if (!Intent.ACTION_BOOT_COMPLETED.equals(a) && !Intent.ACTION_MY_PACKAGE_REPLACED.equals(a)) return;
         SharedPreferences p = Registro.prefs(context);
         if (!p.getBoolean("enabled", false)) return;
-        p.edit().putInt("step", 0).apply();
+        // Os alarmes se perderam: cada automação recomeça do zero (o sinal atual é mantido).
+        SharedPreferences.Editor e = p.edit();
+        for (Automacao x : Automacao.carregar(p)) e.putInt(x.k() + "step", 0);
+        e.apply();
         Registro.add(context, Intent.ACTION_BOOT_COMPLETED.equals(a)
                 ? "Celular reiniciado: retomando." : "App atualizado: retomando.");
         try {

@@ -19,15 +19,15 @@ final class Estatistica {
 
     private Estatistica() {}
 
-    static void inicio(SharedPreferences p, long t) {
-        if (p.getLong("eco_desde", 0) <= 0) p.edit().putLong("eco_desde", t).apply();
+    static void inicio(SharedPreferences p, String k, long t) {
+        if (p.getLong(k + "eco_desde", 0) <= 0) p.edit().putLong(k + "eco_desde", t).apply();
     }
 
-    static void fim(SharedPreferences p, long t) {
-        long s = p.getLong("eco_desde", 0);
-        p.edit().remove("eco_desde").apply();
+    static void fim(SharedPreferences p, String k, long t) {
+        long s = p.getLong(k + "eco_desde", 0);
+        p.edit().remove(k + "eco_desde").apply();
         if (s <= 0 || t <= s) return;
-        JSONObject dias = ler(p);
+        JSONObject dias = ler(p, k);
         while (s < t) {
             long meiaNoite = meiaNoiteApos(s);
             long e = Math.min(t, meiaNoite);
@@ -39,13 +39,13 @@ final class Estatistica {
             s = e;
         }
         podar(dias);
-        p.edit().putString("eco_dias", dias.toString()).apply();
+        p.edit().putString(k + "eco_dias", dias.toString()).apply();
     }
 
     /** Milissegundos em economia no dia de {@code dia} (inclui o trecho em andamento). */
-    static long noDia(SharedPreferences p, long dia, long agora) {
-        long total = ler(p).optLong(chave(dia), 0);
-        long s = p.getLong("eco_desde", 0);
+    static long noDia(SharedPreferences p, String k, long dia, long agora) {
+        long total = ler(p, k).optLong(chave(dia), 0);
+        long s = p.getLong(k + "eco_desde", 0);
         if (s > 0 && chave(dia).equals(chave(agora))) {
             total += agora - Math.max(s, meiaNoiteAntes(agora));
         }
@@ -53,13 +53,13 @@ final class Estatistica {
     }
 
     /** Texto dos últimos 7 dias, do mais recente ao mais antigo. */
-    static List<String> semana(SharedPreferences p, long agora) {
+    static List<String> semana(SharedPreferences p, String k, long agora) {
         List<String> l = new ArrayList<>();
         SimpleDateFormat f = new SimpleDateFormat("EEE dd/MM", new Locale("pt", "BR"));
         Calendar c = Calendar.getInstance();
         c.setTimeInMillis(agora);
         for (int i = 0; i < 7; i++) {
-            l.add(f.format(c.getTime()) + ": " + duracao(noDia(p, c.getTimeInMillis(), agora)));
+            l.add(f.format(c.getTime()) + ": " + duracao(noDia(p, k, c.getTimeInMillis(), agora)));
             c.add(Calendar.DAY_OF_YEAR, -1);
         }
         return l;
@@ -71,9 +71,9 @@ final class Estatistica {
         return (min / 60) + " h " + String.format(Locale.ROOT, "%02d", min % 60) + " min";
     }
 
-    private static JSONObject ler(SharedPreferences p) {
+    private static JSONObject ler(SharedPreferences p, String k) {
         try {
-            return new JSONObject(p.getString("eco_dias", "{}"));
+            return new JSONObject(p.getString(k + "eco_dias", "{}"));
         } catch (JSONException e) {
             return new JSONObject();
         }
