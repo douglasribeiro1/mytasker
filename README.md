@@ -48,6 +48,21 @@ keyPassword=...
 
 Nunca faça commit de `*.jks` ou `keystore.properties`. O `.gitignore` já ignora os dois.
 
+## Build automático no GitHub Actions
+
+O workflow `.github/workflows/build.yml` compila o APK a cada push na `main` e também pode ser disparado manualmente (aba Actions > Build APK > Run workflow). Para o APK sair assinado, cadastre dois secrets em Settings > Secrets and variables > Actions:
+
+- `KEYSTORE_B64`: o conteúdo do `release.jks` em base64, em uma linha.
+- `KEYSTORE_PASSWORD`: o valor de `storePassword` do `keystore.properties`.
+
+Sem os secrets, o build roda mas o APK sai sem assinatura. O APK aparece como artifact `mytasker-release` na execução.
+
+## Segurança
+
+- O MyTasker só pede `ACCESS_NETWORK_STATE`, para saber se o celular está no Wi-Fi. Não pede internet.
+- O Shizuku dá ao app autorizado privilégios de shell (ADB). Autorize só o MyTasker.
+- Depois de iniciar o Shizuku, desligue a depuração sem fio se não precisar dela. O Shizuku continua rodando.
+
 ## Limitações conhecidas
 
 - O ciclo usa o comando `svc data enable|disable`. Se o seu aparelho não aceitar o comando, o app mostra "Falha no comando svc data".
