@@ -5,6 +5,13 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Ler se o Wi-Fi está ligado (a troca em si é feita pelo Shizuku). -->
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <!-- Manter o processador acordado alguns segundos enquanto troca a conexão. -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- Alarmes exatos, para o ciclo não atrasar com a tela apagada (Doze). -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" android:maxSdkVersion="32" />
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
 
     <application
         android:allowBackup="false"
@@ -26,7 +33,7 @@
             android:foregroundServiceType="specialUse">
             <property
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-                android:value="Alterna os dados moveis em ciclos para economizar bateria" />
+                android:value="Alterna dados moveis e Wi-Fi em ciclos com a tela apagada para economizar bateria" />
         </service>
 
         <!-- Exigido pelo Shizuku -->

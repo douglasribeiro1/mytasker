@@ -46,7 +46,7 @@ jobs:
             } > keystore.properties
             echo "Assinatura configurada."
           else
-            echo "Secrets ausentes: o APK sai sem assinatura."
+            echo "::warning::Secrets ausentes: o APK sai sem assinatura e não instala por cima."
           fi
 
       - name: Compilar release

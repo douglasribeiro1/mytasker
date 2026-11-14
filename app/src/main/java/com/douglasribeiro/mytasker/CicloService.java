@@ -1,5 +1,6 @@
 package com.douglasribeiro.mytasker;
 
+import android.app.AlarmManager;
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
@@ -14,52 +15,59 @@ import android.content.ServiceConnection;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.content.pm.ServiceInfo;
-import android.net.ConnectivityManager;
-import android.net.Network;
-import android.net.NetworkCapabilities;
+import android.net.wifi.WifiManager;
 import android.os.Build;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.IBinder;
 import android.os.PowerManager;
 import android.os.RemoteException;
+import android.os.SystemClock;
+import android.telephony.SubscriptionManager;
 import android.util.Log;
 
 import rikka.shizuku.Shizuku;
 
 /**
- * Enquanto a tela estiver apagada, desliga os dados móveis e liga de tempos em tempos.
- * Quando a tela acende, liga os dados imediatamente.
+ * Ciclo com a tela apagada:
+ *   tela apaga -> espera o tempo de segurança -> anota o que estava LIGADO (dados e/ou Wi-Fi, conforme o que foi
+ *   escolhido no app) -> desliga -> espera "desligado" -> liga -> espera "ligado" -> repete.
+ * Nunca liga algo que estava desligado antes. Tela acesa: cancela e religa na hora só o que o ciclo desligou.
+ * Os tempos usam AlarmManager, que funciona mesmo com o celular em sono profundo (Doze).
  */
 public class CicloService extends Service {
 
     private static final String TAG = "MyTasker";
     private static final String CHANNEL_ID = "ciclo";
     private static final int NOTIF_ID = 1;
+    private static final String ACTION_TICK = "com.douglasribeiro.mytasker.TICK";
+
+    // Próximo passo agendado.
+    private static final int STEP_IDLE = 0;
+    private static final int STEP_START = 1;   // fim do tempo de segurança
+    private static final int STEP_ON = 2;      // fim do período desligado
+    private static final int STEP_OFF = 3;     // fim do período ligado
+
+    private static final long RETRY_MS = 20_000L;
 
     private HandlerThread worker;
     private Handler handler;
+    private SharedPreferences prefs;
+    private PowerManager.WakeLock wakeLock;
     private volatile IPrivilegedService privileged;
-    private volatile String lastStatus = "Iniciando";
-    private volatile long offlineMs = 15 * 60_000L;
-    private volatile long onlineMs = 2 * 60_000L;
 
     private boolean bound;
-    private boolean cycling;
     private boolean receiverRegistered;
     private Shizuku.UserServiceArgs userArgs;
-
-    private final Runnable offTick = this::tickOff;
-    private final Runnable onTick = this::tickOn;
 
     private final BroadcastReceiver screenReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
             String action = intent.getAction();
             if (Intent.ACTION_SCREEN_OFF.equals(action)) {
-                handler.post(CicloService.this::startCycle);
+                handler.post(CicloService.this::onScreenOff);
             } else if (Intent.ACTION_SCREEN_ON.equals(action)) {
-                handler.post(CicloService.this::resumeData);
+                handler.post(CicloService.this::onScreenOn);
             }
         }
     };
@@ -68,7 +76,11 @@ public class CicloService extends Service {
         @Override
         public void onServiceConnected(ComponentName name, IBinder service) {
             privileged = IPrivilegedService.Stub.asInterface(service);
-            status("Shizuku conectado");
+            Log.i(TAG, "Shizuku conectado");
+            // Se a tela já está acesa e algo ficou desligado pelo ciclo, religa agora.
+            handler.post(() -> {
+                if (isScreenOn()) restoreAndClear();
+            });
         }
 
         @Override
@@ -81,24 +93,29 @@ public class CicloService extends Service {
     @Override
     public void onCreate() {
         super.onCreate();
+        prefs = getSharedPreferences(MainActivity.PREFS, MODE_PRIVATE);
         worker = new HandlerThread("mytasker-ciclo");
         worker.start();
         handler = new Handler(worker.getLooper());
+        wakeLock = getSystemService(PowerManager.class)
+                .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "MyTasker:ciclo");
+        wakeLock.setReferenceCounted(false);
 
         NotificationChannel channel = new NotificationChannel(
-                CHANNEL_ID, "Ciclo de dados", NotificationManager.IMPORTANCE_LOW);
+                CHANNEL_ID, "Ciclo de conexão", NotificationManager.IMPORTANCE_LOW);
         getSystemService(NotificationManager.class).createNotificationChannel(channel);
 
-        foreground(lastStatus);
+        foreground("Ativo");
     }
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
-        SharedPreferences prefs = getSharedPreferences(MainActivity.PREFS, MODE_PRIVATE);
-        offlineMs = prefs.getInt("offline_min", 15) * 60_000L;
-        onlineMs = prefs.getInt("online_min", 2) * 60_000L;
+        foreground(prefs.getString("status", "Ativo"));
 
-        foreground(lastStatus);
+        if (!prefs.getBoolean("active", false)) {
+            stopSelf();
+            return START_NOT_STICKY;
+        }
 
         if (!receiverRegistered) {
             IntentFilter filter = new IntentFilter();
@@ -113,8 +130,13 @@ public class CicloService extends Service {
             return START_NOT_STICKY;
         }
 
-        if (!getSystemService(PowerManager.class).isInteractive()) {
-            handler.post(this::startCycle);
+        boolean tick = intent != null && ACTION_TICK.equals(intent.getAction());
+        if (tick) {
+            // Segura o processador acordado enquanto troca a conexão (no máximo 1 minuto).
+            wakeLock.acquire(60_000L);
+            handler.post(this::onTick);
+        } else {
+            handler.post(this::onStartOrSettingsChanged);
         }
         return START_STICKY;
     }
@@ -125,19 +147,13 @@ public class CicloService extends Service {
             unregisterReceiver(screenReceiver);
             receiverRegistered = false;
         }
-        cycling = false;
+        cancelAlarm();
         handler.removeCallbacksAndMessages(null);
         handler.post(() -> {
-            // Ao desligar o ciclo, deixa os dados ligados e libera o serviço do Shizuku.
-            IPrivilegedService p = privileged;
-            if (p != null) {
-                try {
-                    p.setMobileData(true);
-                } catch (RemoteException e) {
-                    Log.w(TAG, "Falha ao religar dados", e);
-                }
-            }
+            // Ao desligar o ciclo, devolve o que o ciclo tinha desligado.
+            restoreAndClear();
             unbindShizuku();
+            if (wakeLock.isHeld()) wakeLock.release();
             worker.quitSafely();
         });
         super.onDestroy();
@@ -148,60 +164,175 @@ public class CicloService extends Service {
         return null;
     }
 
-    private void startCycle() {
-        if (cycling) return;
-        cycling = true;
-        handler.post(offTick);
-    }
+    // ---------- máquina de estados (tudo roda na thread "worker") ----------
 
-    private void resumeData() {
-        cycling = false;
-        handler.removeCallbacks(offTick);
-        handler.removeCallbacks(onTick);
-        setData(true);
-    }
-
-    private void tickOff() {
-        if (!cycling) return;
-        if (isOnWifi()) {
-            status("Wi-Fi ativo: dados mantidos");
-        } else {
-            setData(false);
+    private void onStartOrSettingsChanged() {
+        if (isScreenOn()) {
+            restoreAndClear();
+            status("Tela acesa: conexão mantida");
+        } else if (step() == STEP_IDLE) {
+            onScreenOff();
         }
-        handler.postDelayed(onTick, offlineMs);
     }
 
-    private void tickOn() {
-        if (!cycling) return;
-        setData(true);
-        handler.postDelayed(offTick, onlineMs);
+    private void onScreenOff() {
+        long grace = minutes("grace_min", 3);
+        setStep(STEP_START);
+        schedule(grace);
+        status("Tela apagada: ciclo começa em " + grace / 60_000 + " min");
     }
 
-    private void setData(boolean enabled) {
-        IPrivilegedService p = privileged;
-        if (p == null) {
-            status("Aguardando Shizuku");
+    private void onScreenOn() {
+        cancelAlarm();
+        restoreAndClear();
+        status("Tela acesa: conexão mantida");
+    }
+
+    private void onTick() {
+        try {
+            if (isScreenOn()) {
+                onScreenOn();
+                return;
+            }
+            if (privileged == null) {
+                status("Aguardando Shizuku");
+                schedule(RETRY_MS);
+                return;
+            }
+            switch (step()) {
+                case STEP_START:
+                case STEP_OFF:
+                    turnOff();
+                    break;
+                case STEP_ON:
+                    turnOn();
+                    break;
+                default:
+                    break;
+            }
+        } finally {
+            if (wakeLock.isHeld()) wakeLock.release();
+        }
+    }
+
+    /** Desliga só o que está ligado agora e foi escolhido no app. */
+    private void turnOff() {
+        boolean mobile = prefs.getBoolean("cycle_mobile", true) && isMobileDataOn();
+        boolean wifi = prefs.getBoolean("cycle_wifi", false) && isWifiOn();
+
+        if (!mobile && !wifi) {
+            // Usuário (ou o sistema) já deixou tudo desligado: respeita e para até a próxima vez que a tela apagar.
+            setTargets(false, false);
+            setStep(STEP_IDLE);
+            status("Nada ligado para ciclar");
             return;
         }
+
+        boolean ok = true;
+        if (mobile) ok &= call(true, false);
+        if (wifi) ok &= call(false, false);
+        setTargets(mobile, wifi);
+        setStep(STEP_ON);
+        schedule(minutes("offline_min", 15));
+        status((ok ? "Desligado: " : "Falha ao desligar: ") + describe(mobile, wifi));
+    }
+
+    /** Religa só o que o ciclo desligou. */
+    private void turnOn() {
+        boolean mobile = prefs.getBoolean("off_mobile", false);
+        boolean wifi = prefs.getBoolean("off_wifi", false);
+        boolean ok = true;
+        if (mobile) ok &= call(true, true);
+        if (wifi) ok &= call(false, true);
+        setTargets(false, false);
+        setStep(STEP_OFF);
+        schedule(minutes("online_min", 2));
+        status((ok ? "Ligado para sincronizar: " : "Falha ao ligar: ") + describe(mobile, wifi));
+    }
+
+    private void restoreAndClear() {
+        setStep(STEP_IDLE);
+        boolean mobile = prefs.getBoolean("off_mobile", false);
+        boolean wifi = prefs.getBoolean("off_wifi", false);
+        if (!mobile && !wifi) return;
+        if (privileged == null) return; // mantém anotado; religa quando o Shizuku voltar
+        if (mobile) call(true, true);
+        if (wifi) call(false, true);
+        setTargets(false, false);
+    }
+
+    // ---------- auxiliares ----------
+
+    private boolean call(boolean mobile, boolean enable) {
+        IPrivilegedService p = privileged;
+        if (p == null) return false;
         try {
-            boolean ok = p.setMobileData(enabled);
-            if (!ok) {
-                status("Falha no comando svc data");
-            } else {
-                status(enabled ? "Dados ligados" : "Dados desligados");
-            }
-        } catch (RemoteException e) {
+            return mobile ? p.setMobileData(enable) : p.setWifi(enable);
+        } catch (RemoteException | RuntimeException e) {
             Log.w(TAG, "Sem resposta do Shizuku", e);
-            status("Sem resposta do Shizuku");
+            return false;
         }
     }
 
-    private boolean isOnWifi() {
-        ConnectivityManager cm = getSystemService(ConnectivityManager.class);
-        Network network = cm.getActiveNetwork();
-        if (network == null) return false;
-        NetworkCapabilities caps = cm.getNetworkCapabilities(network);
-        return caps != null && caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI);
+    private boolean isMobileDataOn() {
+        IPrivilegedService p = privileged;
+        if (p == null) return false;
+        try {
+            return p.isMobileDataEnabled(SubscriptionManager.getDefaultDataSubscriptionId());
+        } catch (RemoteException | RuntimeException e) {
+            return false;
+        }
+    }
+
+    private boolean isWifiOn() {
+        WifiManager wm = getApplicationContext().getSystemService(WifiManager.class);
+        return wm != null && wm.isWifiEnabled();
+    }
+
+    private boolean isScreenOn() {
+        return getSystemService(PowerManager.class).isInteractive();
+    }
+
+    private long minutes(String key, int def) {
+        return Math.max(1, prefs.getInt(key, def)) * 60_000L;
+    }
+
+    private int step() {
+        return prefs.getInt("step", STEP_IDLE);
+    }
+
+    private void setStep(int step) {
+        prefs.edit().putInt("step", step).apply();
+    }
+
+    private void setTargets(boolean mobile, boolean wifi) {
+        prefs.edit().putBoolean("off_mobile", mobile).putBoolean("off_wifi", wifi).commit();
+    }
+
+    private static String describe(boolean mobile, boolean wifi) {
+        if (mobile && wifi) return "dados e Wi-Fi";
+        return mobile ? "dados móveis" : "Wi-Fi";
+    }
+
+    private PendingIntent tickIntent() {
+        Intent i = new Intent(this, CicloService.class).setAction(ACTION_TICK);
+        return PendingIntent.getService(this, 1, i,
+                PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
+    }
+
+    private void schedule(long delayMs) {
+        AlarmManager am = getSystemService(AlarmManager.class);
+        long at = SystemClock.elapsedRealtime() + delayMs;
+        PendingIntent pi = tickIntent();
+        if (Build.VERSION.SDK_INT < 31 || am.canScheduleExactAlarms()) {
+            am.setExactAndAllowWhileIdle(AlarmManager.ELAPSED_REALTIME_WAKEUP, at, pi);
+        } else {
+            am.setAndAllowWhileIdle(AlarmManager.ELAPSED_REALTIME_WAKEUP, at, pi);
+        }
+    }
+
+    private void cancelAlarm() {
+        getSystemService(AlarmManager.class).cancel(tickIntent());
     }
 
     private boolean bindShizuku() {
@@ -215,7 +346,7 @@ public class CicloService extends Service {
                     .daemon(false)
                     .processNameSuffix("privileged")
                     .debuggable(false)
-                    .version(1);
+                    .version(2);
             Shizuku.bindUserService(userArgs, connection);
             bound = true;
             return true;
@@ -253,7 +384,7 @@ public class CicloService extends Service {
     }
 
     private void status(String text) {
-        lastStatus = text;
+        prefs.edit().putString("status", text).apply();
         getSystemService(NotificationManager.class).notify(NOTIF_ID, buildNotification(text));
     }
 
@@ -261,7 +392,7 @@ public class CicloService extends Service {
         PendingIntent open = PendingIntent.getActivity(
                 this, 0, new Intent(this, MainActivity.class), PendingIntent.FLAG_IMMUTABLE);
         return new Notification.Builder(this, CHANNEL_ID)
-                .setContentTitle("MyTasker · ciclo de dados")
+                .setContentTitle("MyTasker · ciclo de conexão")
                 .setContentText(text)
                 .setSmallIcon(android.R.drawable.stat_notify_sync)
                 .setContentIntent(open)
