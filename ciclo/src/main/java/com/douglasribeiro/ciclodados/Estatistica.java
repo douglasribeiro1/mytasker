@@ -31,9 +31,9 @@ final class Estatistica {
         while (s < t) {
             long meiaNoite = meiaNoiteApos(s);
             long e = Math.min(t, meiaNoite);
-            String k = chave(s);
+            String dia = chave(s);
             try {
-                dias.put(k, dias.optLong(k, 0) + (e - s));
+                dias.put(dia, dias.optLong(dia, 0) + (e - s));
             } catch (JSONException ignored) {
             }
             s = e;

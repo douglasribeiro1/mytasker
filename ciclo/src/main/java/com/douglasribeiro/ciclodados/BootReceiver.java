@@ -21,8 +21,8 @@ public class BootReceiver extends BroadcastReceiver {
                 ? "Celular reiniciado: retomando." : "App atualizado: retomando.");
         try {
             context.startForegroundService(new Intent(context, CicloService.class));
-        } catch (RuntimeException e) {
-            Registro.add(context, "ERRO ao retomar: " + e.getClass().getSimpleName() + ". Abra o app.");
+        } catch (RuntimeException ex) {
+            Registro.add(context, "ERRO ao retomar: " + ex.getClass().getSimpleName() + ". Abra o app.");
         }
     }
 }
