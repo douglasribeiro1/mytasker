@@ -172,6 +172,8 @@ public class MainActivity extends Activity {
 
         ScrollView sv = new ScrollView(this);
         sv.setBackgroundColor(corFundo);
+        // Android 15+ desenha atrás das barras do sistema: afasta o conteúdo delas.
+        sv.setFitsSystemWindows(true);
         sv.addView(root);
         setContentView(sv);
         getWindow().setStatusBarColor(corFundo);
