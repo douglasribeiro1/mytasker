@@ -198,6 +198,14 @@ public class MainActivity extends Activity {
             Automacao x = Automacao.porId(todas, a.id);
             if (x == null) return;
             x.ativo = on;
+            if (on) {
+                String erro = Automacao.conflito(todas);
+                if (erro != null) {
+                    ui.toast(erro);
+                    b.setChecked(false);
+                    return;
+                }
+            }
             Automacao.salvar(prefs, todas);
             avisarServico();
         });

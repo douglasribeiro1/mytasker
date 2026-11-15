@@ -78,8 +78,10 @@ public class AutomacaoActivity extends Activity {
         palavraOff.setHint("Ex.: Desligar Wi-Fi");
         palavraOn = ui.campoCopiavel(p, "Normal (a rotina religa)", a.on);
         palavraOn.setHint("Ex.: Religar Wi-Fi");
-        p.addView(ui.texto("Nenhuma palavra pode estar dentro de outra, nem entre automações diferentes "
-                + "(ex.: \"Desligar Wi-Fi\" contém \"ligar Wi-Fi\").", 12, ui.suave));
+        p.addView(ui.texto("Pode juntar palavras para disparar várias rotinas de uma vez "
+                + "(ex.: economia \"Dados OFF Wifi OFF\", normal \"Dados ON Wifi ON\"). "
+                + "Só não pode o texto de economia conter uma palavra de normal, ou o contrário "
+                + "(ex.: \"Desligar Wi-Fi\" contém \"ligar Wi-Fi\"). Automações desativadas não contam.", 12, ui.suave));
 
         ui.rotulo(root, "Ciclo padrão (fora dos horários)");
         LinearLayout t = ui.cartao(root);

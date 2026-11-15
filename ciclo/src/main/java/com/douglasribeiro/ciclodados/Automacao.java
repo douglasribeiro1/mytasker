@@ -120,27 +120,35 @@ final class Automacao {
 
     // ---------------- validação ----------------
 
-    /** Devolve o problema com as palavras (entre todas as automações), ou null se estiver tudo certo. */
+    /**
+     * Devolve o problema com as palavras das automações ATIVAS, ou null se estiver tudo certo.
+     * Pode juntar palavras do mesmo tipo (ex.: economia "Dados OFF Wifi OFF" dispara as duas rotinas de
+     * desligar). O proibido é um texto de economia conter uma palavra de normal, ou o contrário:
+     * aí uma rotina liga e outra desliga ao mesmo tempo.
+     */
     static String conflito(List<Automacao> l) {
-        List<String> ws = new ArrayList<>(), donos = new ArrayList<>();
-        for (Automacao a : l) {
-            ws.add(a.off);
-            donos.add(a.nome);
-            ws.add(a.on);
-            donos.add(a.nome);
-        }
-        for (int i = 0; i < ws.size(); i++) {
-            String w = ws.get(i).trim().toLowerCase(Locale.ROOT);
-            if (w.isEmpty()) return "\"" + donos.get(i) + "\": as duas palavras são obrigatórias.";
-            if (TEXTOS_FIXOS.contains(w)) {
-                return "\"" + ws.get(i) + "\" aparece nos textos que o app já escreve. Use outra palavra.";
+        List<Automacao> ativas = new ArrayList<>();
+        for (Automacao a : l) if (a.ativo) ativas.add(a);
+        for (Automacao a : ativas) {
+            String off = a.off.trim().toLowerCase(Locale.ROOT), on = a.on.trim().toLowerCase(Locale.ROOT);
+            if (off.isEmpty() || on.isEmpty()) return "\"" + a.nome + "\": as duas palavras são obrigatórias.";
+            if (off.equals(on)) return "\"" + a.nome + "\": as duas palavras são iguais.";
+            for (String w : new String[]{a.off, a.on}) {
+                if (TEXTOS_FIXOS.contains(w.trim().toLowerCase(Locale.ROOT))) {
+                    return "\"" + w + "\" aparece nos textos que o app já escreve. Use outra palavra.";
+                }
             }
-            for (int j = 0; j < ws.size(); j++) {
-                if (i == j) continue;
-                String o = ws.get(j).trim().toLowerCase(Locale.ROOT);
-                if (o.contains(w)) {
-                    return "\"" + ws.get(i) + "\" (" + donos.get(i) + ") está dentro de \"" + ws.get(j) + "\" ("
-                            + donos.get(j) + "). As duas rotinas disparariam juntas.";
+            for (Automacao b : ativas) {
+                String bOff = b.off.trim().toLowerCase(Locale.ROOT), bOn = b.on.trim().toLowerCase(Locale.ROOT);
+                if (!bOn.isEmpty() && off.contains(bOn)) {
+                    return "A economia de \"" + a.nome + "\" (\"" + a.off + "\") contém a palavra de normal \""
+                            + b.on + "\"" + (a == b ? "" : " de \"" + b.nome + "\"")
+                            + ". Uma rotina ligaria e outra desligaria ao mesmo tempo.";
+                }
+                if (!bOff.isEmpty() && on.contains(bOff)) {
+                    return "O normal de \"" + a.nome + "\" (\"" + a.on + "\") contém a palavra de economia \""
+                            + b.off + "\"" + (a == b ? "" : " de \"" + b.nome + "\"")
+                            + ". Uma rotina ligaria e outra desligaria ao mesmo tempo.";
                 }
             }
         }
