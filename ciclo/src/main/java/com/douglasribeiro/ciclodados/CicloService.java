@@ -1,6 +1,7 @@
 package com.douglasribeiro.ciclodados;
 
 import android.app.AlarmManager;
+import android.app.KeyguardManager;
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
@@ -162,6 +163,7 @@ public class CicloService extends Service {
         IntentFilter f = new IntentFilter();
         f.addAction(Intent.ACTION_SCREEN_OFF);
         f.addAction(Intent.ACTION_SCREEN_ON);
+        f.addAction(Intent.ACTION_USER_PRESENT); // desbloqueio
         f.addAction(Intent.ACTION_POWER_CONNECTED);
         f.addAction(Intent.ACTION_POWER_DISCONNECTED);
         registerReceiver(receptor, f);
@@ -209,9 +211,9 @@ public class CicloService extends Service {
                 offMin = periodo.off;
                 onMin = periodo.on;
             }
-            if (telaLigada() && a.tela) {
+            if (interrompe(a)) {
                 modo = M_NORMAL;
-                motivo = "Aguardando a tela apagar";
+                motivo = Automacao.SAIR_DESBLOQUEIO.equals(a.sair) ? "Celular desbloqueado" : "Aguardando a tela apagar";
             } else {
                 modo = M_CICLO;
                 motivo = "";
@@ -296,8 +298,8 @@ public class CicloService extends Service {
                         setStep(a, OFF);
                         agendarTick(a, offMin);
                         fase(a, "off", offMin);
-                    } else if (telaLigada()) {
-                        fase(a, "normal", 0); // tela acesa e ela não interrompe: começa quando apagar
+                    } else if (emUso(a)) {
+                        fase(a, "normal", 0); // celular em uso e ele não interrompe: começa quando apagar
                     } else {
                         Registro.add(this, a.nome + ": economia em " + a.espera + " min.");
                         setStep(a, ESPERA);
@@ -479,6 +481,23 @@ public class CicloService extends Service {
     }
 
     // ---------------- Estado do aparelho ----------------
+
+    /** O uso do celular tira esta automação da economia agora? */
+    private boolean interrompe(Automacao a) {
+        if (Automacao.SAIR_NUNCA.equals(a.sair)) return false;
+        return emUso(a);
+    }
+
+    /** "Em uso": tela acesa; no modo "só ao desbloquear", tela acesa E desbloqueada. */
+    private boolean emUso(Automacao a) {
+        if (!telaLigada()) return false;
+        if (Automacao.SAIR_DESBLOQUEIO.equals(a.sair)) return !bloqueado();
+        return true;
+    }
+
+    private boolean bloqueado() {
+        return getSystemService(KeyguardManager.class).isKeyguardLocked();
+    }
 
     private boolean telaLigada() {
         return getSystemService(PowerManager.class).isInteractive();

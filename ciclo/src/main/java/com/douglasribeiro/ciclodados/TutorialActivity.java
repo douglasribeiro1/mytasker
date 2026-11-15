@@ -95,7 +95,8 @@ public class TutorialActivity extends Activity {
         passo(root, "5. Ciclo padrão",
                 "Para cada automação ativa:\n"
                 + "• A tela apaga → espera → economia → normal → economia...\n"
-                + "• Acender a tela volta ao normal na hora (opcional).\n"
+                + "• Usar o celular volta ao normal na hora. Você escolhe: ao acender a tela, só ao desbloquear "
+                + "(olhar as horas não interrompe) ou nunca.\n"
                 + "• No Wi-Fi ou carregando, fica no normal (opcional). Carregando cobre o carro/Android Auto.\n"
                 + "• \"Esta automação controla os dados móveis\": respeita quando você mesmo desliga os dados, "
                 + "confere 1 min depois de voltar ao normal (reenvia e avisa se falhar) e mostra o tempo em economia.",

@@ -35,7 +35,9 @@ public class AutomacaoActivity extends Activity {
     private List<Periodo> periodos;
 
     private EditText nome, palavraOff, palavraOn, espera, off, on;
-    private CheckBox ativo, dados, tela, wifi, carregando;
+    private CheckBox ativo, dados, wifi, carregando;
+    private RadioGroup sair;
+    private RadioButton sairTela, sairDesbloqueio, sairNunca;
     private LinearLayout lista;
 
     @Override
@@ -91,7 +93,14 @@ public class AutomacaoActivity extends Activity {
 
         ui.rotulo(root, "Condições");
         LinearLayout cond = ui.cartao(root);
-        tela = ui.caixa(cond, "Ao acender a tela, sair da economia na hora", a.tela);
+        cond.addView(ui.texto("Sair da economia quando usar o celular:", 13, ui.suave));
+        sair = new RadioGroup(this);
+        sairTela = radio(sair, "Ao acender a tela");
+        sairDesbloqueio = radio(sair, "Só ao desbloquear (olhar as horas não interrompe)");
+        sairNunca = radio(sair, "Nunca (o ciclo segue mesmo em uso)");
+        sair.check(Automacao.SAIR_DESBLOQUEIO.equals(a.sair) ? sairDesbloqueio.getId()
+                : Automacao.SAIR_NUNCA.equals(a.sair) ? sairNunca.getId() : sairTela.getId());
+        cond.addView(sair);
         wifi = ui.caixa(cond, "Sem economia quando conectado ao Wi-Fi", a.wifi);
         carregando = ui.caixa(cond, "Sem economia quando carregando", a.carregando);
         dados = ui.caixa(cond, "Esta automação controla os dados móveis", a.dados);
@@ -145,7 +154,9 @@ public class AutomacaoActivity extends Activity {
         a.espera = w;
         a.offMin = vOff;
         a.onMin = vOn;
-        a.tela = tela.isChecked();
+        int s = sair.getCheckedRadioButtonId();
+        a.sair = s == sairDesbloqueio.getId() ? Automacao.SAIR_DESBLOQUEIO
+                : s == sairNunca.getId() ? Automacao.SAIR_NUNCA : Automacao.SAIR_TELA;
         a.wifi = wifi.isChecked();
         a.carregando = carregando.isChecked();
         a.periodos = periodos;
@@ -166,6 +177,15 @@ public class AutomacaoActivity extends Activity {
         avisarServico();
         ui.toast(trocouPalavras || nova ? "Salvo. Agora crie/atualize as rotinas com essas palavras." : "Salvo.");
         finish();
+    }
+
+    private RadioButton radio(RadioGroup g, String texto) {
+        RadioButton r = new RadioButton(this);
+        r.setText(texto);
+        r.setTextColor(ui.texto);
+        r.setId(View.generateViewId());
+        g.addView(r);
+        return r;
     }
 
     private void excluir() {

@@ -26,7 +26,10 @@ final class Automacao {
     boolean ativo = true;
     boolean dados = true; // controla os dados móveis: respeitar, conferir, resumo
     int espera = 3, offMin = 15, onMin = 2;
-    boolean tela = true, wifi = true, carregando = true;
+    /** Quando sair da economia por uso do celular: ao acender a tela, só ao desbloquear, ou nunca. */
+    static final String SAIR_TELA = "tela", SAIR_DESBLOQUEIO = "desbloqueio", SAIR_NUNCA = "nunca";
+    String sair = SAIR_TELA;
+    boolean wifi = true, carregando = true;
     List<Periodo> periodos = new ArrayList<>();
 
     /** Prefixo das chaves de estado desta automação. */
@@ -39,7 +42,7 @@ final class Automacao {
     JSONObject json() throws JSONException {
         return new JSONObject().put("id", id).put("nome", nome).put("off", off).put("on", on)
                 .put("ativo", ativo).put("dados", dados).put("espera", espera).put("offMin", offMin)
-                .put("onMin", onMin).put("tela", tela).put("wifi", wifi).put("carregando", carregando)
+                .put("onMin", onMin).put("sair", sair).put("wifi", wifi).put("carregando", carregando)
                 .put("periodos", Periodo.paraArray(periodos));
     }
 
@@ -54,7 +57,8 @@ final class Automacao {
         a.espera = o.optInt("espera", a.espera);
         a.offMin = o.optInt("offMin", a.offMin);
         a.onMin = o.optInt("onMin", a.onMin);
-        a.tela = o.optBoolean("tela", true);
+        a.sair = o.has("sair") ? o.optString("sair", SAIR_TELA)
+                : (o.optBoolean("tela", true) ? SAIR_TELA : SAIR_NUNCA); // formato anterior
         a.wifi = o.optBoolean("wifi", true);
         a.carregando = o.optBoolean("carregando", true);
         a.periodos = Periodo.deArray(o.optJSONArray("periodos"));
@@ -102,7 +106,7 @@ final class Automacao {
         a.espera = p.getInt("wait_min", 3);
         a.offMin = p.getInt("off_min", 15);
         a.onMin = p.getInt("on_min", 2);
-        a.tela = p.getBoolean("tela_interrompe", true);
+        a.sair = p.getBoolean("tela_interrompe", true) ? SAIR_TELA : SAIR_NUNCA;
         a.wifi = p.getBoolean("pular_wifi", true);
         a.carregando = p.getBoolean("pular_carregando", true);
         a.periodos = Periodo.carregar(p);
