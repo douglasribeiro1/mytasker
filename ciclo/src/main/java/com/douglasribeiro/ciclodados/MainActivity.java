@@ -16,7 +16,9 @@ import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
+import android.widget.ScrollView;
 import android.widget.Switch;
 import android.widget.TextView;
 
@@ -29,15 +31,18 @@ public class MainActivity extends Activity {
     private SharedPreferences prefs;
     private Ui ui;
 
+    private ScrollView rolagem;
+    private LinearLayout paginaInicio, paginaHistorico;
     private TextView statusTitulo, statusDetalhe, logView;
     private Button pausaBotao;
-    private LinearLayout avisos, lista;
+    private LinearLayout avisos, lista, atualizacao, semana;
+    private TextView abaInicio, abaHistorico;
     private Switch geral;
     private boolean suprimir;
 
     private final SharedPreferences.OnSharedPreferenceChangeListener mudou = (p, k) -> {
         if (k == null || k.contains("fase") || k.equals("enabled") || k.equals("log")
-                || k.equals("pausa_ate") || k.contains("eco_") || k.equals("automacoes")) {
+                || k.equals("pausa_ate") || k.contains("eco_") || k.equals("automacoes") || k.startsWith("upd_")) {
             runOnUiThread(this::atualizar);
         }
     };
@@ -64,6 +69,7 @@ public class MainActivity extends Activity {
         super.onResume();
         prefs.registerOnSharedPreferenceChangeListener(mudou);
         atualizar();
+        Atualizacao.verificar(this, false, null);
     }
 
     @Override
@@ -77,58 +83,176 @@ public class MainActivity extends Activity {
         atualizar();
     }
 
+    @Override
+    public void onBackPressed() {
+        if (paginaHistorico.getVisibility() == View.VISIBLE) mostrarPagina(false);
+        else super.onBackPressed();
+    }
+
+    // ---------------- Montagem ----------------
+
     private void montar() {
         LinearLayout root = ui.raiz();
+        root.addView(cabecalho());
+
+        paginaInicio = new LinearLayout(this);
+        paginaInicio.setOrientation(LinearLayout.VERTICAL);
+        root.addView(paginaInicio);
+        montarInicio(paginaInicio);
+
+        paginaHistorico = new LinearLayout(this);
+        paginaHistorico.setOrientation(LinearLayout.VERTICAL);
+        paginaHistorico.setVisibility(View.GONE);
+        root.addView(paginaHistorico);
+        montarHistorico(paginaHistorico);
+
+        rolagem = new ScrollView(this);
+        rolagem.setBackgroundColor(ui.fundo);
+        rolagem.addView(root);
+        ui.mostrar(rolagem, barraInferior());
+    }
+
+    private View cabecalho() {
+        LinearLayout linha = new LinearLayout(this);
+        linha.setGravity(Gravity.CENTER_VERTICAL);
+        linha.setPadding(ui.dp(4), ui.dp(4), 0, ui.dp(16));
+        ImageView logo = new ImageView(this);
+        logo.setImageResource(R.drawable.ic_stat);
+        logo.setColorFilter(ui.destaque);
+        LinearLayout.LayoutParams lpLogo = new LinearLayout.LayoutParams(ui.dp(46), ui.dp(46));
+        lpLogo.rightMargin = ui.dp(10);
+        linha.addView(logo, lpLogo);
+        LinearLayout textos = new LinearLayout(this);
+        textos.setOrientation(LinearLayout.VERTICAL);
+        textos.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
         TextView titulo = ui.texto("Pulso", 30, ui.texto);
         titulo.setTypeface(Typeface.DEFAULT_BOLD);
-        titulo.setPadding(ui.dp(4), ui.dp(8), 0, 0);
-        root.addView(titulo);
-        TextView sub = ui.texto("Liga e desliga rotinas da Samsung em ciclos e horários", 14, ui.suave);
-        sub.setPadding(ui.dp(4), 0, 0, ui.dp(16));
-        root.addView(sub);
+        textos.addView(titulo);
+        textos.addView(ui.texto("Sinais que disparam suas rotinas da Samsung", 13, ui.suave));
+        linha.addView(textos);
+        TextView diag = ui.texto("⚙", 26, ui.suave);
+        diag.setPadding(ui.dp(12), ui.dp(4), ui.dp(4), ui.dp(4));
+        diag.setOnClickListener(v -> startActivity(new Intent(this, DiagnosticoActivity.class)));
+        linha.addView(diag);
+        return linha;
+    }
 
-        LinearLayout status = ui.cartao(root);
-        statusTitulo = ui.texto("", 22, ui.texto);
+    private void montarInicio(LinearLayout pg) {
+        LinearLayout status = ui.cartaoDestaque(pg);
+        statusTitulo = ui.texto("", 26, 0xFFFFFFFF);
         statusTitulo.setTypeface(Typeface.DEFAULT_BOLD);
         status.addView(statusTitulo);
-        statusDetalhe = ui.texto("", 14, ui.suave);
+        statusDetalhe = ui.texto("", 14, 0xDDFFFFFF);
         statusDetalhe.setPadding(0, ui.dp(4), 0, ui.dp(8));
         status.addView(statusDetalhe);
         geral = new Switch(this);
         geral.setText("Pulso ligado");
-        geral.setTextColor(ui.texto);
+        geral.setTextColor(0xFFFFFFFF);
         geral.setTextSize(TypedValue.COMPLEX_UNIT_SP, 17);
         geral.setPadding(0, ui.dp(8), 0, ui.dp(4));
+        ui.tingir(geral, true);
         geral.setOnCheckedChangeListener((b, on) -> {
             if (!suprimir) ligar(on);
         });
         status.addView(geral);
         pausaBotao = ui.botao("", this::alternarPausa, false);
+        pausaBotao.setTextColor(0xFFFFFFFF);
+        android.graphics.drawable.GradientDrawable contorno = new android.graphics.drawable.GradientDrawable();
+        contorno.setColor(0x22FFFFFF);
+        contorno.setStroke(ui.dp(1), 0x88FFFFFF);
+        contorno.setCornerRadius(ui.dp(24));
+        pausaBotao.setBackground(contorno);
         status.addView(pausaBotao);
+
+        atualizacao = new LinearLayout(this);
+        atualizacao.setOrientation(LinearLayout.VERTICAL);
+        pg.addView(atualizacao);
 
         avisos = new LinearLayout(this);
         avisos.setOrientation(LinearLayout.VERTICAL);
-        root.addView(avisos);
+        pg.addView(avisos);
 
-        ui.rotulo(root, "Automações");
+        LinearLayout topo = new LinearLayout(this);
+        topo.setGravity(Gravity.CENTER_VERTICAL);
+        topo.setPadding(ui.dp(4), ui.dp(12), 0, ui.dp(6));
+        TextView t = ui.texto("Minhas automações", 20, ui.texto);
+        t.setTypeface(Typeface.DEFAULT_BOLD);
+        t.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        topo.addView(t);
+        topo.addView(ui.botao("+ Nova", () -> abrirAutomacao(-1), true));
+        pg.addView(topo);
+
         lista = new LinearLayout(this);
         lista.setOrientation(LinearLayout.VERTICAL);
-        root.addView(lista);
-        root.addView(ui.botao("+ Nova automação", () -> abrirAutomacao(-1), true));
+        pg.addView(lista);
+    }
 
-        LinearLayout tut = ui.cartao(root);
-        tut.addView(ui.texto("📖  Como funciona (tutorial passo a passo)", 17, ui.destaque));
-        tut.setOnClickListener(v -> startActivity(new Intent(this, TutorialActivity.class)));
+    private void montarHistorico(LinearLayout pg) {
+        LinearLayout s = ui.cartao(pg);
+        TextView ts = ui.texto("Tempo em economia (dados móveis)", 17, ui.texto);
+        ts.setTypeface(Typeface.DEFAULT_BOLD);
+        s.addView(ts);
+        semana = new LinearLayout(this);
+        semana.setOrientation(LinearLayout.VERTICAL);
+        s.addView(semana);
 
-        LinearLayout hist = ui.secao(root, "Histórico");
-        hist.addView(ui.botao("Limpar", () -> { Registro.limpar(this); atualizar(); }, false));
+        LinearLayout r = ui.cartao(pg);
+        LinearLayout topo = new LinearLayout(this);
+        topo.setGravity(Gravity.CENTER_VERTICAL);
+        TextView tr = ui.texto("Registro", 17, ui.texto);
+        tr.setTypeface(Typeface.DEFAULT_BOLD);
+        tr.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        topo.addView(tr);
+        topo.addView(ui.botao("Limpar", () -> { Registro.limpar(this); atualizar(); }, false));
+        r.addView(topo);
         logView = ui.texto("", 11, ui.texto);
         logView.setTypeface(Typeface.MONOSPACE);
         logView.setTextIsSelectable(true);
-        hist.addView(logView);
-
-        ui.mostrar(root);
+        r.addView(logView);
     }
+
+    private View barraInferior() {
+        LinearLayout barra = new LinearLayout(this);
+        barra.setBackgroundColor(ui.escuro ? 0xFF0F1528 : ui.cartao);
+        barra.setPadding(0, ui.dp(6), 0, ui.dp(6));
+        View linha = new View(this);
+        abaInicio = aba(barra, "⌂", "Início", () -> mostrarPagina(false));
+        abaHistorico = aba(barra, "▤", "Histórico", () -> mostrarPagina(true));
+        aba(barra, "✓", "Diagnóstico", () -> startActivity(new Intent(this, DiagnosticoActivity.class)));
+        aba(barra, "?", "Tutorial", () -> startActivity(new Intent(this, TutorialActivity.class)));
+        LinearLayout tudo = new LinearLayout(this);
+        tudo.setOrientation(LinearLayout.VERTICAL);
+        linha.setBackgroundColor(ui.borda);
+        tudo.addView(linha, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ui.dp(1)));
+        tudo.addView(barra);
+        marcarAbas(false);
+        return tudo;
+    }
+
+    private TextView aba(LinearLayout barra, String simbolo, String nome, Runnable r) {
+        TextView t = ui.texto(simbolo + "\n" + nome, 12, ui.suave);
+        t.setGravity(Gravity.CENTER);
+        t.setPadding(0, ui.dp(4), 0, ui.dp(4));
+        t.setOnClickListener(v -> r.run());
+        barra.addView(t, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        return t;
+    }
+
+    private void marcarAbas(boolean historico) {
+        abaInicio.setTextColor(historico ? ui.suave : ui.destaque);
+        abaHistorico.setTextColor(historico ? ui.destaque : ui.suave);
+        abaInicio.setTypeface(historico ? Typeface.DEFAULT : Typeface.DEFAULT_BOLD);
+        abaHistorico.setTypeface(historico ? Typeface.DEFAULT_BOLD : Typeface.DEFAULT);
+    }
+
+    private void mostrarPagina(boolean historico) {
+        paginaInicio.setVisibility(historico ? View.GONE : View.VISIBLE);
+        paginaHistorico.setVisibility(historico ? View.VISIBLE : View.GONE);
+        marcarAbas(historico);
+        rolagem.scrollTo(0, 0);
+    }
+
+    // ---------------- Atualização da tela ----------------
 
     private void atualizar() {
         long agora = System.currentTimeMillis();
@@ -139,17 +263,14 @@ public class MainActivity extends Activity {
         int ativas = 0;
         for (Automacao a : todas) if (a.ativo) ativas++;
 
-        statusTitulo.setTextColor(ui.texto);
         if (!ligado) {
             statusTitulo.setText("Desligado");
-            statusTitulo.setTextColor(ui.suave);
             statusDetalhe.setText("Ligue para as automações funcionarem.");
         } else if (pausado) {
             statusTitulo.setText("Pausado");
             statusDetalhe.setText("Tudo normal até " + CicloService.hora(pausa) + ".");
         } else {
             statusTitulo.setText("Ativo");
-            statusTitulo.setTextColor(ui.destaque);
             statusDetalhe.setText(ativas == 1 ? "1 automação ativa." : ativas + " automações ativas.");
         }
         suprimir = true;
@@ -161,9 +282,21 @@ public class MainActivity extends Activity {
         lista.removeAllViews();
         if (todas.isEmpty()) {
             LinearLayout c = ui.cartao(lista);
-            c.addView(ui.texto("Nenhuma automação. Toque em \"+ Nova automação\".", 14, ui.suave));
+            c.addView(ui.texto("Nenhuma automação. Toque em \"+ Nova\".", 14, ui.suave));
         }
         for (Automacao a : todas) cartaoAutomacao(a, ligado, agora);
+
+        atualizacao.removeAllViews();
+        String nova = Atualizacao.disponivel(this);
+        if (nova != null) {
+            LinearLayout c = ui.cartao(atualizacao);
+            TextView t = ui.texto("Nova versão disponível: " + nova, 16, ui.destaque);
+            t.setTypeface(Typeface.DEFAULT_BOLD);
+            c.addView(t);
+            c.addView(ui.texto("Baixe e instale por cima. As configurações continuam.", 13, ui.suave));
+            c.addView(ui.botao("Baixar", () -> abrir(new Intent(Intent.ACTION_VIEW,
+                    Uri.parse(Atualizacao.link(this)))), true));
+        }
 
         avisos.removeAllViews();
         boolean notif = Build.VERSION.SDK_INT < 33
@@ -178,6 +311,21 @@ public class MainActivity extends Activity {
             aviso("A bateria do app está restrita: os ciclos podem atrasar ou parar.", "Corrigir", this::pedirBateria);
         }
 
+        semana.removeAllViews();
+        boolean algum = false;
+        for (Automacao a : todas) {
+            if (!a.dados) continue;
+            algum = true;
+            TextView n = ui.texto(a.nome, 15, ui.destaque);
+            n.setTypeface(Typeface.DEFAULT_BOLD);
+            n.setPadding(0, ui.dp(10), 0, ui.dp(2));
+            semana.addView(n);
+            semana.addView(ui.texto(String.join("\n", Estatistica.semana(prefs, a.k(), agora)), 14, ui.texto));
+        }
+        if (!algum) {
+            semana.addView(ui.texto("Aparece aqui para as automações com \"controla os dados móveis\" marcado.",
+                    13, ui.suave));
+        }
         String log = Registro.texto(this);
         logView.setText(log.isEmpty() ? "(vazio)" : log);
     }
@@ -187,12 +335,43 @@ public class MainActivity extends Activity {
         c.setOnClickListener(v -> abrirAutomacao(a.id));
         LinearLayout topo = new LinearLayout(this);
         topo.setGravity(Gravity.CENTER_VERTICAL);
+        String letra = a.nome.isEmpty() ? "?" : a.nome.substring(0, 1).toUpperCase();
+        TextView ic = ui.icone(letra, 46);
+        if (!a.ativo) ic.setAlpha(0.4f);
+        topo.addView(ic);
+
+        LinearLayout meio = new LinearLayout(this);
+        meio.setOrientation(LinearLayout.VERTICAL);
+        meio.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
         TextView nome = ui.texto(a.nome, 18, a.ativo ? ui.texto : ui.suave);
         nome.setTypeface(Typeface.DEFAULT_BOLD);
-        nome.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
-        topo.addView(nome);
+        meio.addView(nome);
+
+        String k = a.k();
+        String fase = prefs.getString(k + "fase", "idle");
+        long ate = prefs.getLong(k + "fase_ate", 0);
+        String motivo = prefs.getString(k + "fase_motivo", "");
+        boolean vigente = ate > agora;
+        String hora = vigente ? CicloService.hora(ate) : "";
+        String st;
+        int cor = ui.suave;
+        if (!a.ativo) st = "Desativada";
+        else if (!ligado) st = "Pulso desligado";
+        else if (("off".equals(fase) && vigente) || "economia".equals(fase)) {
+            st = "Em economia" + (vigente ? " até " + hora : motivo.isEmpty() ? "" : " · " + motivo);
+            cor = ui.destaque2;
+        } else if ("on".equals(fase) && vigente) {
+            st = "Normal até " + hora;
+            cor = ui.ok;
+        } else if ("espera".equals(fase) && vigente) st = "Economia começa às " + hora;
+        else if ("pausa_usuario".equals(fase) && vigente) st = "Dados desligados por você · tenta às " + hora;
+        else st = motivo.isEmpty() ? "Aguardando a tela apagar" : motivo;
+        meio.addView(ui.texto(st, 14, cor));
+        topo.addView(meio);
+
         Switch s = new Switch(this);
         s.setChecked(a.ativo);
+        ui.tingir(s, false);
         s.setOnCheckedChangeListener((b, on) -> {
             List<Automacao> todas = Automacao.carregar(prefs);
             Automacao x = Automacao.porId(todas, a.id);
@@ -212,36 +391,19 @@ public class MainActivity extends Activity {
         topo.addView(s);
         c.addView(topo);
 
-        String k = a.k();
-        String fase = prefs.getString(k + "fase", "idle");
-        long ate = prefs.getLong(k + "fase_ate", 0);
-        String motivo = prefs.getString(k + "fase_motivo", "");
-        boolean vigente = ate > agora;
-        String hora = vigente ? CicloService.hora(ate) : "";
-        String st;
-        int cor = ui.suave;
-        if (!a.ativo) st = "Desativada";
-        else if (!ligado) st = "Pulso desligado";
-        else if (("off".equals(fase) && vigente) || "economia".equals(fase)) {
-            st = "Em economia" + (vigente ? " até " + hora : motivo.isEmpty() ? "" : " · " + motivo);
-            cor = ui.destaque;
-        } else if ("on".equals(fase) && vigente) st = "Normal até " + hora;
-        else if ("espera".equals(fase) && vigente) st = "Economia começa às " + hora;
-        else if ("pausa_usuario".equals(fase) && vigente) st = "Dados desligados por você · tenta às " + hora;
-        else st = motivo.isEmpty() ? "Aguardando a tela apagar" : motivo;
-        c.addView(ui.texto(st, 14, cor));
-        c.addView(ui.texto("\"" + a.off + "\" / \"" + a.on + "\" · " + a.offMin + " min / " + a.onMin + " min"
-                + (a.periodos.isEmpty() ? "" : " · " + a.periodos.size() + " horário(s)"), 12, ui.suave));
+        TextView det = ui.texto("\"" + a.off + "\" / \"" + a.on + "\" · " + a.offMin + " min / " + a.onMin + " min"
+                + (a.periodos.isEmpty() ? "" : " · " + a.periodos.size() + " horário(s)"), 12, ui.suave);
+        det.setPadding(ui.dp(60), ui.dp(6), 0, 0);
+        c.addView(det);
         if (a.dados) {
-            TextView eco = ui.texto("Hoje em economia: " + Estatistica.duracao(Estatistica.noDia(prefs, k, agora, agora))
-                    + "  (toque e segure para ver 7 dias)", 12, ui.suave);
-            c.setOnLongClickListener(v -> {
-                eco.setText("Em economia:\n" + String.join("\n", Estatistica.semana(prefs, k, agora)));
-                return true;
-            });
+            TextView eco = ui.texto("Hoje em economia: "
+                    + Estatistica.duracao(Estatistica.noDia(prefs, k, agora, agora)), 12, ui.suave);
+            eco.setPadding(ui.dp(60), ui.dp(2), 0, 0);
             c.addView(eco);
         }
     }
+
+    // ---------------- Ações ----------------
 
     private void abrirAutomacao(int id) {
         startActivity(new Intent(this, AutomacaoActivity.class).putExtra(AutomacaoActivity.EXTRA_ID, id));

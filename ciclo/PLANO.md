@@ -42,3 +42,9 @@ a rotina faz o que você quiser (dados, Wi-Fi...) com os sinais "Desligar" e "At
 - [x] MyTasker antigo (Shizuku) removido do repositório.
 - [x] Horários: "Economia o tempo todo" vale com a tela acesa ou apagada.
 - [x] Resumo do dia e dos últimos 7 dias.
+- [x] Tempo mínimo de 1 minuto; a conferência dos dados acontece na metade da fase.
+- [x] Sem economia durante chamadas (ligação comum, WhatsApp e outros apps de voz) e com o roteador Wi-Fi ligado.
+- [x] Notificação apagada volta sozinha; botão "Pausar / retomar" em cada notificação.
+- [x] Tela de diagnóstico: permissões, bateria, rotinas, estado do celular e teste das rotinas de dados.
+- [x] Versões publicadas em Releases (link direto do APK) e aviso de versão nova dentro do app.
+- [x] Visual novo azul/roxo, seguindo o tema claro/escuro do celular, com barra inferior.

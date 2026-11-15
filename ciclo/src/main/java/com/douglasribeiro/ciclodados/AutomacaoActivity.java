@@ -35,7 +35,7 @@ public class AutomacaoActivity extends Activity {
     private List<Periodo> periodos;
 
     private EditText nome, palavraOff, palavraOn, espera, off, on;
-    private CheckBox ativo, dados, wifi, carregando;
+    private CheckBox ativo, dados, wifi, carregando, chamada, roteador;
     private RadioGroup sair;
     private RadioButton sairTela, sairDesbloqueio, sairNunca;
     private LinearLayout lista;
@@ -103,6 +103,8 @@ public class AutomacaoActivity extends Activity {
         cond.addView(sair);
         wifi = ui.caixa(cond, "Sem economia quando conectado ao Wi-Fi", a.wifi);
         carregando = ui.caixa(cond, "Sem economia quando carregando", a.carregando);
+        chamada = ui.caixa(cond, "Sem economia durante chamadas (ligação, WhatsApp e outros)", a.chamada);
+        roteador = ui.caixa(cond, "Sem economia com o roteador Wi-Fi ligado", a.roteador);
         dados = ui.caixa(cond, "Esta automação controla os dados móveis", a.dados);
         cond.addView(ui.texto("Com a última marcada, o app respeita quando você mesmo desliga os dados, "
                 + "confere se a rotina religou e mostra o tempo em economia. "
@@ -159,6 +161,8 @@ public class AutomacaoActivity extends Activity {
                 : s == sairNunca.getId() ? Automacao.SAIR_NUNCA : Automacao.SAIR_TELA;
         a.wifi = wifi.isChecked();
         a.carregando = carregando.isChecked();
+        a.chamada = chamada.isChecked();
+        a.roteador = roteador.isChecked();
         a.periodos = periodos;
         if (antiga != null) todas.set(todas.indexOf(antiga), a);
         else todas.add(a);
@@ -183,6 +187,7 @@ public class AutomacaoActivity extends Activity {
         RadioButton r = new RadioButton(this);
         r.setText(texto);
         r.setTextColor(ui.texto);
+        ui.tingir(r);
         r.setId(View.generateViewId());
         g.addView(r);
         return r;
@@ -274,6 +279,7 @@ public class AutomacaoActivity extends Activity {
             cbs[i] = new CheckBox(this);
             cbs[i].setText(Periodo.LETRAS[i]);
             cbs[i].setChecked((p.dias & (1 << i)) != 0);
+            ui.tingir(cbs[i]);
             dias.addView(cbs[i]);
         }
         HorizontalScrollView hs = new HorizontalScrollView(this);
@@ -308,6 +314,9 @@ public class AutomacaoActivity extends Activity {
         rCiclo.setId(View.generateViewId());
         rNormal.setText("Sem ciclo (tudo normal)");
         rNormal.setId(View.generateViewId());
+        ui.tingir(rEco);
+        ui.tingir(rCiclo);
+        ui.tingir(rNormal);
         modo.addView(rEco);
         modo.addView(rCiclo);
         modo.addView(rNormal);
@@ -324,6 +333,7 @@ public class AutomacaoActivity extends Activity {
         tempos.setVisibility(Periodo.CICLO.equals(p.modo) ? View.VISIBLE : View.GONE);
 
         CheckBox ativoP = new CheckBox(this);
+        ui.tingir(ativoP);
         ativoP.setText("Horário ativo");
         ativoP.setChecked(p.ativo);
         f.addView(ativoP);

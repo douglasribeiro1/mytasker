@@ -18,7 +18,7 @@ final class Automacao {
 
     /** Textos fixos que o app escreve nas notificações. Nenhuma palavra pode estar contida neles. */
     static final String TEXTOS_FIXOS = "pulso · até 00:00 · teste · reenviado · em funcionamento · "
-            + "pausado até · pausar 1 h · retomar";
+            + "pausado até · pausar 1 h · retomar · pausar / retomar";
 
     int id;
     String nome = "Dados móveis";
@@ -30,6 +30,8 @@ final class Automacao {
     static final String SAIR_TELA = "tela", SAIR_DESBLOQUEIO = "desbloqueio", SAIR_NUNCA = "nunca";
     String sair = SAIR_TELA;
     boolean wifi = true, carregando = true;
+    /** Sem economia durante chamadas (ligação comum ou de app) e com o roteador Wi-Fi ligado. */
+    boolean chamada = true, roteador = true;
     List<Periodo> periodos = new ArrayList<>();
 
     /** Prefixo das chaves de estado desta automação. */
@@ -43,6 +45,7 @@ final class Automacao {
         return new JSONObject().put("id", id).put("nome", nome).put("off", off).put("on", on)
                 .put("ativo", ativo).put("dados", dados).put("espera", espera).put("offMin", offMin)
                 .put("onMin", onMin).put("sair", sair).put("wifi", wifi).put("carregando", carregando)
+                .put("chamada", chamada).put("roteador", roteador)
                 .put("periodos", Periodo.paraArray(periodos));
     }
 
@@ -61,6 +64,8 @@ final class Automacao {
                 : (o.optBoolean("tela", true) ? SAIR_TELA : SAIR_NUNCA); // formato anterior
         a.wifi = o.optBoolean("wifi", true);
         a.carregando = o.optBoolean("carregando", true);
+        a.chamada = o.optBoolean("chamada", true);
+        a.roteador = o.optBoolean("roteador", true);
         a.periodos = Periodo.deArray(o.optJSONArray("periodos"));
         return a;
     }

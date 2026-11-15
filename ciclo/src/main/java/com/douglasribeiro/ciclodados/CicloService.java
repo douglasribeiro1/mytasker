@@ -1,7 +1,6 @@
 package com.douglasribeiro.ciclodados;
 
 import android.app.AlarmManager;
-import android.app.KeyguardManager;
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
@@ -16,16 +15,14 @@ import android.content.pm.ServiceInfo;
 import android.net.ConnectivityManager;
 import android.net.Network;
 import android.net.NetworkCapabilities;
+import android.media.AudioManager;
 import android.net.Uri;
-import android.os.BatteryManager;
 import android.os.Build;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
 import android.os.PowerManager;
 import android.os.SystemClock;
-import android.provider.Settings;
-import android.telephony.TelephonyManager;
 
 import java.text.SimpleDateFormat;
 import java.util.Date;
@@ -40,7 +37,7 @@ import java.util.Set;
  *   palavra de normal   ("Ativar")   → a rotina religa.
  * Um título só é publicado quando o sinal daquela automação muda, para não redisparar as outras rotinas.
  *
- * Quem manda, em ordem: pausa → carregando → Wi-Fi → horário da lista → tela → ciclo padrão.
+ * Quem manda, em ordem: pausa → chamada → roteador → carregando → Wi-Fi → horário da lista → tela → ciclo padrão.
  */
 public class CicloService extends Service {
 
@@ -50,6 +47,9 @@ public class CicloService extends Service {
     static final String ACTION_PAUSAR = "com.douglasribeiro.ciclodados.PAUSAR";
     static final String ACTION_RETOMAR = "com.douglasribeiro.ciclodados.RETOMAR";
     static final String ACTION_REAVALIAR = "com.douglasribeiro.ciclodados.REAVALIAR";
+    static final String ACTION_ALTERNAR = "com.douglasribeiro.ciclodados.ALTERNAR";
+    /** A pessoa apagou uma notificação (Android 14+ deixa): recoloca. */
+    private static final String ACTION_REPOR = "com.douglasribeiro.ciclodados.REPOR";
     static final String EXTRA_ID = "id";
     private static final String ACTION_TICK = "com.douglasribeiro.ciclodados.TICK";
     private static final String ACTION_CHECK = "com.douglasribeiro.ciclodados.CHECK";
@@ -82,6 +82,9 @@ public class CicloService extends Service {
             reavaliarTodas();
         }
     };
+
+    /** Início/fim de chamada (Android 12+): reavalia logo, sem esperar o próximo ciclo. */
+    private AudioManager.OnModeChangedListener modoAudio;
 
     private final ConnectivityManager.NetworkCallback rede = new ConnectivityManager.NetworkCallback() {
         @Override public void onAvailable(Network n) { depois(); }
@@ -130,10 +133,15 @@ public class CicloService extends Service {
             parar(ACTION_STOP.equals(action));
             return START_NOT_STICKY;
         }
+        if (ACTION_ALTERNAR.equals(action)) {
+            action = prefs.getLong("pausa_ate", 0) > System.currentTimeMillis() ? ACTION_RETOMAR : ACTION_PAUSAR;
+        }
         registrar();
         List<Automacao> todas = Automacao.carregar(prefs);
         Automacao a = Automacao.porId(todas, id);
-        if (ACTION_TICK.equals(action)) {
+        if (ACTION_REPOR.equals(action)) {
+            repor(a, id);
+        } else if (ACTION_TICK.equals(action)) {
             if (a != null && a.ativo) tick(a);
         } else if (ACTION_CHECK.equals(action)) {
             if (a != null && a.ativo) conferir(a);
@@ -166,8 +174,17 @@ public class CicloService extends Service {
         f.addAction(Intent.ACTION_USER_PRESENT); // desbloqueio
         f.addAction(Intent.ACTION_POWER_CONNECTED);
         f.addAction(Intent.ACTION_POWER_DISCONNECTED);
-        registerReceiver(receptor, f);
+        f.addAction(Aparelho.ROTEADOR_ACAO);
+        if (Build.VERSION.SDK_INT >= 33) registerReceiver(receptor, f, Context.RECEIVER_EXPORTED);
+        else registerReceiver(receptor, f);
         getSystemService(ConnectivityManager.class).registerDefaultNetworkCallback(rede);
+        if (Build.VERSION.SDK_INT >= 31) {
+            modoAudio = m -> {
+                h.removeCallbacks(reavaliarDepois);
+                h.postDelayed(reavaliarDepois, 2000);
+            };
+            getSystemService(AudioManager.class).addOnModeChangedListener(getMainExecutor(), modoAudio);
+        }
         registrado = true;
     }
 
@@ -177,6 +194,13 @@ public class CicloService extends Service {
         try {
             getSystemService(ConnectivityManager.class).unregisterNetworkCallback(rede);
         } catch (RuntimeException ignored) {
+        }
+        if (Build.VERSION.SDK_INT >= 31 && modoAudio != null) {
+            try {
+                getSystemService(AudioManager.class).removeOnModeChangedListener(modoAudio);
+            } catch (RuntimeException ignored) {
+            }
+            modoAudio = null;
         }
         h.removeCallbacks(reavaliarDepois);
         registrado = false;
@@ -193,6 +217,12 @@ public class CicloService extends Service {
         if (pausa > agora) {
             modo = M_NORMAL;
             motivo = "Pausado até " + hora(pausa);
+        } else if (a.chamada && Aparelho.emChamada(this)) {
+            modo = M_NORMAL;
+            motivo = "Em chamada";
+        } else if (a.roteador && Aparelho.roteadorLigado(this)) {
+            modo = M_NORMAL;
+            motivo = "Roteador Wi-Fi ligado";
         } else if (a.carregando && carregando()) {
             modo = M_NORMAL;
             motivo = "Carregando";
@@ -267,6 +297,8 @@ public class CicloService extends Service {
                     if (a.dados) agendarCheck(a, "on", 10 * 60_000L);
                 }
                 fase(a, "normal", 0);
+                // Antes do Android 12 não há aviso de fim de chamada: confere de novo em 1 min.
+                if (Build.VERSION.SDK_INT < 31 && "Em chamada".equals(motivo)) agendarTick(a, 1);
                 break;
 
             case M_ECONOMIA:
@@ -423,12 +455,41 @@ public class CicloService extends Service {
                 .setContentTitle(palavra)
                 .setContentText(texto)
                 .setContentIntent(abrir)
+                .setDeleteIntent(servico(ACTION_REPOR, a.id, 4))
                 .setGroup(GRUPO)
                 .setOngoing(true)
                 .setShowWhen(true)
                 .setWhen(System.currentTimeMillis())
+                .addAction(new Notification.Action.Builder(null, "Pausar / retomar",
+                        servico(ACTION_ALTERNAR, 0, 5)).build())
                 .build();
         getSystemService(NotificationManager.class).notify(NOTIF_BASE + a.id, n);
+    }
+
+    /** PendingIntent para uma ação deste serviço (um por automação e tipo). */
+    private PendingIntent servico(String action, int id, int tipo) {
+        Intent i = new Intent(this, CicloService.class).setAction(action).putExtra(EXTRA_ID, id)
+                .setData(Uri.parse("pulso://" + tipo + "/" + id));
+        return PendingIntent.getForegroundService(this, id * 10 + tipo, i,
+                PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
+    }
+
+    /**
+     * A notificação foi apagada: põe de volta. Só some quando você desliga o Pulso.
+     * Exceção: se você mesmo desligou os dados e o sinal atual é o de religar, espera o próximo sinal
+     * (recolocar agora religaria os dados contra a sua vontade).
+     */
+    private void repor(Automacao a, int id) {
+        if (id <= 0) {
+            prefs.edit().remove("resumo_estado").apply();
+            atualizarResumo();
+            return;
+        }
+        if (a == null || !a.ativo) return;
+        boolean off = sinalOff(a);
+        if (!off && a.dados && !Aparelho.dadosLigados(this)) return;
+        Registro.add(this, a.nome + ": notificação apagada, recolocada.");
+        publicar(a, off ? a.off : a.on, null);
     }
 
     private void cancelarNotificacao(Automacao a) {
@@ -452,6 +513,7 @@ public class CicloService extends Service {
                 .setContentIntent(abrir)
                 .setGroup(GRUPO)
                 .setGroupSummary(true)
+                .setDeleteIntent(servico(ACTION_REPOR, 0, 4))
                 .setOngoing(true)
                 .setShowWhen(false)
                 .addAction(new Notification.Action.Builder(null,
@@ -496,43 +558,27 @@ public class CicloService extends Service {
     }
 
     private boolean bloqueado() {
-        return getSystemService(KeyguardManager.class).isKeyguardLocked();
+        return Aparelho.bloqueado(this);
     }
 
     private boolean telaLigada() {
-        return getSystemService(PowerManager.class).isInteractive();
+        return Aparelho.telaLigada(this);
     }
 
     private boolean carregando() {
-        return getSystemService(BatteryManager.class).isCharging();
+        return Aparelho.carregando(this);
     }
 
     private boolean wifiConectado() {
-        ConnectivityManager cm = getSystemService(ConnectivityManager.class);
-        Network n = cm.getActiveNetwork();
-        NetworkCapabilities nc = n != null ? cm.getNetworkCapabilities(n) : null;
-        return nc != null && nc.hasTransport(NetworkCapabilities.TRANSPORT_WIFI);
+        return Aparelho.wifiConectado(this);
     }
 
     private boolean dadosLigados() {
-        try {
-            return getSystemService(TelephonyManager.class).isDataEnabled();
-        } catch (RuntimeException e) {
-            return Settings.Global.getInt(getContentResolver(), "mobile_data", 1) == 1;
-        }
+        return Aparelho.dadosLigados(this);
     }
 
     private String estado() {
-        String rede = "nenhuma";
-        ConnectivityManager cm = getSystemService(ConnectivityManager.class);
-        Network n = cm.getActiveNetwork();
-        NetworkCapabilities nc = n != null ? cm.getNetworkCapabilities(n) : null;
-        if (nc != null) {
-            if (nc.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) rede = "Wi-Fi";
-            else if (nc.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)) rede = "dados móveis";
-            else rede = "outra";
-        }
-        return "dados móveis: " + (dadosLigados() ? "LIGADOS" : "DESLIGADOS") + " | rede: " + rede;
+        return "dados móveis: " + (dadosLigados() ? "LIGADOS" : "DESLIGADOS") + " | rede: " + Aparelho.rede(this);
     }
 
     // ---------------- Fase (para a tela do app) ----------------

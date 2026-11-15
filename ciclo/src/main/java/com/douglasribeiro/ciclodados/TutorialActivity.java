@@ -3,7 +3,6 @@ package com.douglasribeiro.ciclodados;
 import android.app.Activity;
 import android.content.Intent;
 import android.content.SharedPreferences;
-import android.content.res.Configuration;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
@@ -22,18 +21,18 @@ import java.util.List;
 /** Tutorial passo a passo. Abre sozinho na primeira vez e fica no cartão "Como funciona". */
 public class TutorialActivity extends Activity {
 
+    private Ui ui;
     private int corFundo, corCartao, corTexto, corSuave, corDestaque;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        boolean escuro = (getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK)
-                == Configuration.UI_MODE_NIGHT_YES;
-        corFundo = escuro ? 0xFF000000 : 0xFFF2F2F7;
-        corCartao = escuro ? 0xFF1C1C1E : 0xFFFFFFFF;
-        corTexto = escuro ? 0xFFF2F2F2 : 0xFF111111;
-        corSuave = escuro ? 0xFFA0A0A5 : 0xFF6B6B70;
-        corDestaque = escuro ? 0xFF8C9EFF : 0xFF3949AB;
+        ui = new Ui(this);
+        corFundo = ui.fundo;
+        corCartao = ui.cartao;
+        corTexto = ui.texto;
+        corSuave = ui.suave;
+        corDestaque = ui.destaque;
 
         SharedPreferences prefs = Registro.prefs(this);
         List<Automacao> todas = Automacao.carregar(prefs);
@@ -67,7 +66,7 @@ public class TutorialActivity extends Activity {
                         Uri.parse("package:" + getPackageName()))));
 
         passo(root, "2. Criar a automação no Pulso",
-                "Toque em \"+ Nova automação\" (ou abra uma existente) e preencha:\n"
+                "Toque em \"+ Nova\" (ou abra uma existente) e preencha:\n"
                 + "• Nome — só para você.\n"
                 + "• Palavra de economia e palavra de normal — cada uma tem um botão Copiar.\n"
                 + "• Tempos, condições e horários.\n\n"
@@ -89,7 +88,9 @@ public class TutorialActivity extends Activity {
 
         passo(root, "4. Testar",
                 "Ligue o Pulso. Abra a automação e toque em \"Enviar economia\": a rotina deve agir. "
-                + "\"Enviar normal\" desfaz. Se nada acontecer, confira na rotina o app e a palavra (use o Copiar).",
+                + "\"Enviar normal\" desfaz. Se nada acontecer, confira na rotina o app e a palavra (use o Copiar).\n\n"
+                + "Para dados móveis, o Diagnóstico (⚙ no topo) testa sozinho: manda os dois sinais e confere "
+                + "se os dados desligaram e religaram.",
                 null, null);
 
         passo(root, "5. Ciclo padrão",
@@ -98,6 +99,9 @@ public class TutorialActivity extends Activity {
                 + "• Usar o celular volta ao normal na hora. Você escolhe: ao acender a tela, só ao desbloquear "
                 + "(olhar as horas não interrompe) ou nunca.\n"
                 + "• No Wi-Fi ou carregando, fica no normal (opcional). Carregando cobre o carro/Android Auto.\n"
+                + "• Durante chamadas (ligação comum, WhatsApp e outros apps) e com o roteador Wi-Fi ligado, "
+                + "fica no normal (opcional). Atenção: com os dados já desligados, chamadas de WhatsApp não "
+                + "chegam; o Pulso só evita cortar uma chamada em andamento.\n"
                 + "• \"Esta automação controla os dados móveis\": respeita quando você mesmo desliga os dados, "
                 + "confere 1 min depois de voltar ao normal (reenvia e avisa se falhar) e mostra o tempo em economia.",
                 null, null);
@@ -112,7 +116,9 @@ public class TutorialActivity extends Activity {
                 + "Pausa, carregando e Wi-Fi valem acima dos horários.", null, null);
 
         passo(root, "7. Atalhos",
-                "• \"Pausar tudo por 1 hora\": na tela do app e na notificação \"Pulso\". Volta sozinho.\n"
+                "• \"Pausar tudo por 1 hora\": na tela do app e no botão \"Pausar / retomar\" das notificações "
+                + "(puxe a notificação para baixo para ver). Volta sozinho.\n"
+                + "• Se você apagar a notificação, o Pulso coloca de volta. Ela só some quando você desliga o Pulso.\n"
                 + "• Painel rápido: puxe o painel → lápis (editar) → arraste o botão \"Pulso\". "
                 + "Toque para pausar ou retomar.\n"
                 + "• O Pulso volta sozinho depois de reiniciar o celular.", null, null);
@@ -122,7 +128,8 @@ public class TutorialActivity extends Activity {
                 + "• Duas rotinas disparando juntas: uma palavra está dentro de outra — troque.\n"
                 + "• Duas automações mexendo na mesma coisa ao mesmo tempo se atrapalham — evite.\n"
                 + "• Se a rotina desliga o Wi-Fi, não marque \"Sem economia quando conectado ao Wi-Fi\".\n"
-                + "• O Histórico (tela principal) mostra tudo o que o Pulso fez, com horário.\n"
+                + "• O Diagnóstico (⚙ no topo) confere permissões, bateria e as rotinas.\n"
+                + "• O Histórico (barra de baixo) mostra tudo o que o Pulso fez, com horário.\n"
                 + "• Mensagens podem atrasar durante a economia; ao acender a tela, chegam na hora. "
                 + "Ligações normais continuam funcionando.", null, null);
 
@@ -130,23 +137,15 @@ public class TutorialActivity extends Activity {
         ok.setOnClickListener(v -> finish());
         root.addView(ok);
 
-        ScrollView sv = new ScrollView(this);
-        sv.setBackgroundColor(corFundo);
-        sv.setFitsSystemWindows(true);
-        sv.addView(root);
-        setContentView(sv);
-        getWindow().setStatusBarColor(corFundo);
-        getWindow().setNavigationBarColor(corFundo);
+        root.setBackgroundColor(corFundo);
+        ui.mostrar(root);
     }
 
     private void passo(LinearLayout pai, String titulo, String corpo, String acao, Runnable r) {
         LinearLayout c = new LinearLayout(this);
         c.setOrientation(LinearLayout.VERTICAL);
         c.setPadding(dp(18), dp(16), dp(18), dp(16));
-        GradientDrawable bg = new GradientDrawable();
-        bg.setColor(corCartao);
-        bg.setCornerRadius(dp(24));
-        c.setBackground(bg);
+        c.setBackground(ui.fundoCartao());
         TextView t = texto(titulo, 18, corDestaque);
         t.setTypeface(Typeface.DEFAULT_BOLD);
         t.setPadding(0, 0, 0, dp(8));
@@ -154,13 +153,7 @@ public class TutorialActivity extends Activity {
         TextView b = texto(corpo, 15, corTexto);
         b.setLineSpacing(0, 1.15f);
         c.addView(b);
-        if (acao != null) {
-            Button bt = new Button(this);
-            bt.setText(acao);
-            bt.setAllCaps(false);
-            bt.setOnClickListener(v -> r.run());
-            c.addView(bt);
-        }
+        if (acao != null) c.addView(ui.botao(acao, r, false));
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         lp.bottomMargin = dp(12);
@@ -186,15 +179,7 @@ public class TutorialActivity extends Activity {
     }
 
     private Button botao(String s) {
-        Button b = new Button(this);
-        b.setText(s);
-        b.setAllCaps(false);
-        GradientDrawable bg = new GradientDrawable();
-        bg.setColor(corDestaque);
-        bg.setCornerRadius(dp(20));
-        b.setBackground(bg);
-        b.setTextColor(0xFFFFFFFF);
-        return b;
+        return ui.botaoLargo(s, () -> { }, true);
     }
 
     private TextView texto(String s, int sp, int cor) {

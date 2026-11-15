@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write # para publicar cada versão em Releases
 
 jobs:
   build:
@@ -44,6 +44,7 @@ jobs:
               echo "keyAlias=mytasker"
               echo "keyPassword=$KEYSTORE_PASSWORD"
             } > keystore.properties
+            echo "ASSINADO=true" >> "$GITHUB_ENV"
             echo "Assinatura configurada."
           else
             echo "::warning::Secrets ausentes: o APK sai sem assinatura e não instala por cima."
@@ -60,3 +61,15 @@ jobs:
           name: pulso-release
           path: ciclo/build/outputs/apk/release/*.apk
           if-no-files-found: error
+
+      - name: Publicar versão (Releases, link direto do APK)
+        if: env.ASSINADO == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          V="1.0.${{ github.run_number }}"
+          cp ciclo/build/outputs/apk/release/*.apk "Pulso-$V.apk"
+          git log -1 --pretty=%B | grep -v -E '^(Co-Authored-By|Claude-Session):' > notas.md
+          printf '\nInstale o arquivo Pulso-%s.apk por cima da versão anterior. As configurações continuam.\n' "$V" >> notas.md
+          gh release create "v$V" "Pulso-$V.apk" --target "${{ github.sha }}" \
+            --title "Pulso $V" --notes-file notas.md --latest

@@ -3,5 +3,7 @@
     <style name="Tema" parent="android:Theme.DeviceDefault.Light">
         <item name="android:windowActionBar">false</item>
         <item name="android:windowNoTitle">true</item>
+        <item name="android:windowBackground">@color/fundo</item>
+        <item name="android:colorAccent">#FF4F7CFF</item>
     </style>
 </resources>
