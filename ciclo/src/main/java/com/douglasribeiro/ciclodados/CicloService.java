@@ -264,7 +264,7 @@ public class CicloService extends Service {
                 if (sinalOff(a)) {
                     Registro.add(this, a.nome + ": " + motivo + " → \"" + a.on + "\".");
                     enviarAtivar(a, null);
-                    if (a.dados) agendarCheck(a, "on");
+                    if (a.dados) agendarCheck(a, "on", 10 * 60_000L);
                 }
                 fase(a, "normal", 0);
                 break;
@@ -280,7 +280,7 @@ public class CicloService extends Service {
                             Registro.add(this, a.nome + ": " + motivo + " → \"" + a.off + "\".");
                             long fim = periodo != null ? periodo.fimApos(System.currentTimeMillis()) : 0;
                             enviarDesligar(a, fim > 0 ? "até " + hora(fim) : null);
-                            if (a.dados) agendarCheck(a, "off");
+                            if (a.dados) agendarCheck(a, "off", 10 * 60_000L);
                         }
                     }
                 }
@@ -337,7 +337,7 @@ public class CicloService extends Service {
                     setStep(a, OFF);
                     agendarTick(a, offMin);
                     fase(a, "off", offMin);
-                    if (a.dados) agendarCheck(a, "off");
+                    if (a.dados) agendarCheck(a, "off", offMin * 60_000L);
                     break;
                 case OFF:
                     Registro.add(this, a.nome + ": \"" + a.on + "\" (" + onMin + " min).");
@@ -345,7 +345,7 @@ public class CicloService extends Service {
                     setStep(a, ON);
                     agendarTick(a, onMin);
                     fase(a, "on", onMin);
-                    if (a.dados) agendarCheck(a, "on");
+                    if (a.dados) agendarCheck(a, "on", onMin * 60_000L);
                     break;
                 default:
                     reavaliar(a);
@@ -372,7 +372,7 @@ public class CicloService extends Service {
             } else if ("on".equals(tipo)) {
                 Registro.add(this, a.nome + ": dados ainda desligados, reenviando \"" + a.on + "\".");
                 enviarAtivar(a, "reenviado");
-                agendarCheck(a, "on2");
+                agendarCheck(a, "on2", prefs.getLong(a.k() + "check_resto", 60_000L));
             } else {
                 Registro.add(this, a.nome + ": a rotina não religou os dados.");
                 alerta(a);
@@ -579,9 +579,14 @@ public class CicloService extends Service {
         agendarElapsed(ACTION_TICK, a.id, Math.max(1, minutos) * 60_000L);
     }
 
-    private void agendarCheck(Automacao a, String tipo) {
-        prefs.edit().putString(a.k() + "check", tipo).apply();
-        agendarElapsed(ACTION_CHECK, a.id, 60_000L);
+    /**
+     * Confere na metade da fase (no máximo 1 min depois), para nunca coincidir com o próximo sinal.
+     * Ex.: normal de 1 min → confere aos 30 s; se reenviar, confere de novo aos 45 s.
+     */
+    private void agendarCheck(Automacao a, String tipo, long faseMs) {
+        long d = Math.max(10_000L, Math.min(60_000L, faseMs / 2));
+        prefs.edit().putString(a.k() + "check", tipo).putLong(a.k() + "check_resto", faseMs - d).apply();
+        agendarElapsed(ACTION_CHECK, a.id, d);
     }
 
     /** Reavalia na hora em que algum horário começa/termina ou a pausa acaba. */

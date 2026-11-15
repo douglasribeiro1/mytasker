@@ -133,9 +133,9 @@ public class AutomacaoActivity extends Activity {
     }
 
     private void salvar() {
-        Integer w = Ui.ler(espera, 1, 120), vOff = Ui.ler(off, 2, 1440), vOn = Ui.ler(on, 2, 1440);
+        Integer w = Ui.ler(espera, 1, 120), vOff = Ui.ler(off, 1, 1440), vOn = Ui.ler(on, 1, 1440);
         if (w == null || vOff == null || vOn == null) {
-            ui.toast("Tempos inválidos: espera 1–120 min; economia e normal 2–1440 min.");
+            ui.toast("Tempos inválidos: espera 1–120 min; economia e normal 1–1440 min.");
             return;
         }
         String n = nome.getText().toString().trim();
@@ -352,9 +352,9 @@ public class AutomacaoActivity extends Activity {
             }
             String m = modo.getCheckedRadioButtonId() == rCiclo.getId() ? Periodo.CICLO
                     : modo.getCheckedRadioButtonId() == rNormal.getId() ? Periodo.NORMAL : Periodo.ECONOMIA;
-            Integer vOff = Ui.ler(offP, 2, 1440), vOn = Ui.ler(onP, 2, 1440);
+            Integer vOff = Ui.ler(offP, 1, 1440), vOn = Ui.ler(onP, 1, 1440);
             if (Periodo.CICLO.equals(m) && (vOff == null || vOn == null)) {
-                ui.toast("Tempos inválidos: 2 a 1440 min.");
+                ui.toast("Tempos inválidos: 1 a 1440 min.");
                 return;
             }
             String nn = nomeP.getText().toString().trim();
