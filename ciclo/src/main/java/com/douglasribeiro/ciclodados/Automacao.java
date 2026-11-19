@@ -18,7 +18,10 @@ final class Automacao {
 
     /** Textos fixos que o app escreve nas notificações. Nenhuma palavra pode estar contida neles. */
     static final String TEXTOS_FIXOS = "pulso · até 00:00 · teste · reenviado · em funcionamento · "
-            + "pausado até · pausar 1 h · retomar · pausar / retomar";
+            + "pausado até · pausar 1 h · retomar · pausar / retomar · iniciando · sinais às · após reiniciar · "
+            + "tentar de novo · continuar · parar o pulso · "
+            + CicloService.ALERTA_TITULO + " · " + CicloService.ALERTA_OFF + " · " + CicloService.ALERTA_ON + " · "
+            + CicloService.PERGUNTA_TITULO + " · " + CicloService.PERGUNTA_TEXTO;
 
     int id;
     String nome = "Dados móveis";
@@ -143,7 +146,7 @@ final class Automacao {
             if (off.isEmpty() || on.isEmpty()) return "\"" + a.nome + "\": as duas palavras são obrigatórias.";
             if (off.equals(on)) return "\"" + a.nome + "\": as duas palavras são iguais.";
             for (String w : new String[]{a.off, a.on}) {
-                if (TEXTOS_FIXOS.contains(w.trim().toLowerCase(Locale.ROOT))) {
+                if (TEXTOS_FIXOS.toLowerCase(Locale.ROOT).contains(w.trim().toLowerCase(Locale.ROOT))) {
                     return "\"" + w + "\" aparece nos textos que o app já escreve. Use outra palavra.";
                 }
             }

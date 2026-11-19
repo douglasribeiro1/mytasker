@@ -102,8 +102,10 @@ public class TutorialActivity extends Activity {
                 + "• Durante chamadas (ligação comum, WhatsApp e outros apps) e com o roteador Wi-Fi ligado, "
                 + "fica no normal (opcional). Atenção: com os dados já desligados, chamadas de WhatsApp não "
                 + "chegam; o Pulso só evita cortar uma chamada em andamento.\n"
-                + "• \"Esta automação controla os dados móveis\": respeita quando você mesmo desliga os dados, "
-                + "confere 1 min depois de voltar ao normal (reenvia e avisa se falhar) e mostra o tempo em economia.",
+                + "• \"Esta automação controla os dados móveis\": confere logo depois de cada sinal (desligar e "
+                + "religar). Se a rotina não obedeceu, reenvia; se ainda assim falhar, avisa com som. "
+                + "O Pulso manda: se você desligar os dados por fora, o ciclo continua e ele pergunta se você "
+                + "quer parar o Pulso. Mostra também o tempo em economia.",
                 null, null);
 
         passo(root, "6. Horários",
@@ -121,7 +123,9 @@ public class TutorialActivity extends Activity {
                 + "• Se você apagar a notificação, o Pulso coloca de volta. Ela só some quando você desliga o Pulso.\n"
                 + "• Painel rápido: puxe o painel → lápis (editar) → arraste o botão \"Pulso\". "
                 + "Toque para pausar ou retomar.\n"
-                + "• O Pulso volta sozinho depois de reiniciar o celular.", null, null);
+                + "• O Pulso volta sozinho depois de reiniciar o celular: espera 3 min (as rotinas da Samsung "
+                + "carregarem), reenvia o sinal certo e confere.\n"
+                + "• Histórico → \"Copiar\" copia o registro inteiro para colar numa mensagem.", null, null);
 
         passo(root, "Se algo não funcionar",
                 "• Nada acontece: confira se as notificações do Pulso aparecem e se as rotinas estão ativas.\n"

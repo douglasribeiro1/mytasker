@@ -106,8 +106,8 @@ public class AutomacaoActivity extends Activity {
         chamada = ui.caixa(cond, "Sem economia durante chamadas (ligação, WhatsApp e outros)", a.chamada);
         roteador = ui.caixa(cond, "Sem economia com o roteador Wi-Fi ligado", a.roteador);
         dados = ui.caixa(cond, "Esta automação controla os dados móveis", a.dados);
-        cond.addView(ui.texto("Com a última marcada, o app respeita quando você mesmo desliga os dados, "
-                + "confere se a rotina religou e mostra o tempo em economia. "
+        cond.addView(ui.texto("Com a última marcada, o app confere cada sinal (reenvia e avisa com som se a rotina falhar), "
+                + "pergunta se você quer parar quando os dados são desligados por fora e mostra o tempo em economia. "
                 + "Se a rotina desliga o Wi-Fi, não marque \"Sem economia quando conectado ao Wi-Fi\".", 12, ui.suave));
 
         ui.rotulo(root, "Horários");

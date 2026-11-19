@@ -203,6 +203,11 @@ public class MainActivity extends Activity {
         tr.setTypeface(Typeface.DEFAULT_BOLD);
         tr.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
         topo.addView(tr);
+        topo.addView(ui.botao("Copiar", () -> {
+            android.content.ClipboardManager cm = getSystemService(android.content.ClipboardManager.class);
+            cm.setPrimaryClip(android.content.ClipData.newPlainText("Registro do Pulso", Registro.texto(this)));
+            ui.toast("Registro copiado.");
+        }, false));
         topo.addView(ui.botao("Limpar", () -> { Registro.limpar(this); atualizar(); }, false));
         r.addView(topo);
         logView = ui.texto("", 11, ui.texto);
@@ -364,7 +369,6 @@ public class MainActivity extends Activity {
             st = "Normal até " + hora;
             cor = ui.ok;
         } else if ("espera".equals(fase) && vigente) st = "Economia começa às " + hora;
-        else if ("pausa_usuario".equals(fase) && vigente) st = "Dados desligados por você · tenta às " + hora;
         else st = motivo.isEmpty() ? "Aguardando a tela apagar" : motivo;
         meio.addView(ui.texto(st, 14, cor));
         topo.addView(meio);
