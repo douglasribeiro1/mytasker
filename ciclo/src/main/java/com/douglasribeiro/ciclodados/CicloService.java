@@ -26,6 +26,7 @@ import android.os.SystemClock;
 
 import java.text.SimpleDateFormat;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
@@ -65,6 +66,11 @@ public class CicloService extends Service {
     static final long ESPERA_BOOT_MS = 3 * 60_000L;
     /** Depois de atualizar o app, as rotinas já estão de pé: espera pouco. */
     static final long ESPERA_ATUALIZACAO_MS = 15_000L;
+
+    /** Entre um sinal e o contrário, pelo menos isto (apagar e acender a tela rápido não dispara as duas rotinas juntas). */
+    static final long INTERVALO_MIN_MS = 10_000L;
+    /** Publicações adiadas pelo intervalo mínimo, por automação. */
+    private final HashMap<Integer, Runnable> adiados = new HashMap<>();
 
     private static final String CHANNEL = "sinal";
     private static final String CHANNEL_ALERTA = "alertas";
@@ -367,6 +373,10 @@ public class CicloService extends Service {
                         fase(a, "off", offMin);
                     } else if (emUso(a)) {
                         fase(a, "normal", 0); // celular em uso e ele não interrompe: começa quando apagar
+                    } else if (a.espera <= 0) {
+                        Registro.add(this, a.nome + ": tela apagada, economia já (espera 0).");
+                        setStep(a, ESPERA);
+                        tick(a);
                     } else {
                         Registro.add(this, a.nome + ": economia em " + a.espera + " min.");
                         setStep(a, ESPERA);
@@ -527,13 +537,19 @@ public class CicloService extends Service {
         fase(a, "idle", 0);
         getSystemService(NotificationManager.class).cancel(PERGUNTA_BASE + a.id);
         getSystemService(NotificationManager.class).cancel(ALERTA_BASE + a.id);
+        Runnable adiado = adiados.remove(a.id);
+        if (adiado != null) h.removeCallbacks(adiado);
+        prefs.edit().remove(a.k() + "publicar_em").apply();
         if (!religar) {
             prefs.edit().putString(a.k() + "sinal", "on").apply();
             Estatistica.fim(prefs, a.k(), System.currentTimeMillis());
             cancelarNotificacao(a);
         } else if (sinalOff(a)) {
             Registro.add(this, (a.nome.isEmpty() ? "Automação" : a.nome) + ": encerrada → \"" + a.on + "\".");
-            enviarAtivar(a, null);
+            // Encerrar não espera o intervalo mínimo: a notificação some logo depois.
+            prefs.edit().putString(a.k() + "sinal", "on").apply();
+            Estatistica.fim(prefs, a.k(), System.currentTimeMillis());
+            publicarAgora(a, a.on, null);
             h.postDelayed(() -> cancelarNotificacao(a), 5000);
         } else {
             cancelarNotificacao(a);
@@ -564,6 +580,41 @@ public class CicloService extends Service {
      * nem sempre faz a Samsung rodar a rotina de novo.
      */
     private void publicar(Automacao a, String palavra, String detalhe) {
+        String k = a.k();
+        long agora = System.currentTimeMillis();
+        Runnable antes = adiados.remove(a.id);
+        if (antes != null) h.removeCallbacks(antes);
+        String ultima = prefs.getString(k + "publicado", "");
+        if (antes != null && palavra.equals(ultima)) {
+            // Voltou ao sinal que já estava na tela antes de o adiado sair: nada a mandar.
+            prefs.edit().remove(k + "publicar_em").apply();
+            Registro.add(this, a.nome + ": mudou de ideia em menos de " + INTERVALO_MIN_MS / 1000
+                    + " s; continua \"" + palavra + "\".");
+            return;
+        }
+        long falta = prefs.getLong(k + "publicado_em", 0) + INTERVALO_MIN_MS - agora;
+        if (!palavra.equals(ultima) && falta > 0) {
+            // Sinal contrário logo depois do anterior: espera completar o intervalo mínimo.
+            PowerManager.WakeLock wl = getSystemService(PowerManager.class)
+                    .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "pulso:intervalo");
+            wl.acquire(falta + 5_000L);
+            Runnable r = () -> {
+                adiados.remove(a.id);
+                prefs.edit().remove(k + "publicar_em").apply();
+                publicarAgora(a, palavra, detalhe);
+                if (wl.isHeld()) wl.release();
+            };
+            adiados.put(a.id, r);
+            prefs.edit().putLong(k + "publicar_em", agora + falta).apply();
+            h.postDelayed(r, falta);
+            return;
+        }
+        publicarAgora(a, palavra, detalhe);
+    }
+
+    private void publicarAgora(Automacao a, String palavra, String detalhe) {
+        prefs.edit().putString(a.k() + "publicado", palavra)
+                .putLong(a.k() + "publicado_em", System.currentTimeMillis()).apply();
         String texto = "Pulso" + (detalhe != null ? " · " + detalhe : "");
         PendingIntent abrir = PendingIntent.getActivity(this, 0,
                 new Intent(this, MainActivity.class), PendingIntent.FLAG_IMMUTABLE);
@@ -788,6 +839,8 @@ public class CicloService extends Service {
      */
     private void agendarCheck(Automacao a, String tipo, long faseMs) {
         long d = Math.max(10_000L, Math.min(60_000L, faseMs / 2));
+        // Se o sinal está esperando o intervalo mínimo, a conferência conta a partir de quando ele sair.
+        d += Math.max(0, prefs.getLong(a.k() + "publicar_em", 0) - System.currentTimeMillis());
         prefs.edit().putString(a.k() + "check", tipo).putLong(a.k() + "check_resto", faseMs - d)
                 .putLong(a.k() + "check_em", System.currentTimeMillis() + d).apply();
         agendarElapsed(ACTION_CHECK, a.id, d);

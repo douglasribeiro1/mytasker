@@ -87,7 +87,7 @@ public class AutomacaoActivity extends Activity {
 
         ui.rotulo(root, "Ciclo padrão (fora dos horários)");
         LinearLayout t = ui.cartao(root);
-        espera = ui.numero(t, "Espera depois de apagar a tela (min)", a.espera);
+        espera = ui.numero(t, "Espera depois de apagar a tela (min, 0 = na hora)", a.espera);
         off = ui.numero(t, "Economia (min)", a.offMin);
         on = ui.numero(t, "Normal (min)", a.onMin);
 
@@ -135,9 +135,9 @@ public class AutomacaoActivity extends Activity {
     }
 
     private void salvar() {
-        Integer w = Ui.ler(espera, 1, 120), vOff = Ui.ler(off, 1, 1440), vOn = Ui.ler(on, 1, 1440);
+        Integer w = Ui.ler(espera, 0, 120), vOff = Ui.ler(off, 1, 1440), vOn = Ui.ler(on, 1, 1440);
         if (w == null || vOff == null || vOn == null) {
-            ui.toast("Tempos inválidos: espera 1–120 min; economia e normal 1–1440 min.");
+            ui.toast("Tempos inválidos: espera 0–120 min; economia e normal 1–1440 min.");
             return;
         }
         String n = nome.getText().toString().trim();
